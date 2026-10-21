@@ -14,6 +14,7 @@ public partial class App : Application
     private Mutex? instanceMutex;
     private HotkeyService? hotkey;
     private Forms.NotifyIcon? tray;
+    private System.Drawing.Icon? trayIcon;
     private MainWindow? settingsWindow;
     private CaptureSession? session;
     private HotkeySettings settings = new();
@@ -39,7 +40,8 @@ public partial class App : Application
         menu.Items.Add("设置", null, (_, _) => ShowSettings());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitApplication());
-        tray = new Forms.NotifyIcon { Text = "Cut · 截图", Icon = System.Drawing.SystemIcons.Application, Visible = true, ContextMenuStrip = menu };
+        trayIcon = LoadTrayIcon();
+        tray = new Forms.NotifyIcon { Text = "Cut · 截图", Icon = trayIcon, Visible = true, ContextMenuStrip = menu };
         tray.DoubleClick += (_, _) => ShowSettings();
         ChangeHotkey(settings, persist: false);
         SystemEvents.DisplaySettingsChanged += DisplaySettingsChanged;
@@ -94,7 +96,22 @@ public partial class App : Application
         settingsWindow?.Show();
         if (settingsWindow is not null) { settingsWindow.WindowState = WindowState.Normal; settingsWindow.Activate(); }
     }
-    private void DisplaySettingsChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(() => session?.Abort()));
+    private static System.Drawing.Icon LoadTrayIcon()
+    {
+        var resource = GetResourceStream(new Uri("pack://application:,,,/Assets/Cut.Tray.ico"));
+        using var stream = resource.Stream;
+        using var icon = new System.Drawing.Icon(stream, Forms.SystemInformation.SmallIconSize);
+        return (System.Drawing.Icon)icon.Clone();
+    }
+    private void DisplaySettingsChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(() =>
+    {
+        session?.Abort();
+        if (tray is null || IsExiting) return;
+        var previous = trayIcon;
+        trayIcon = LoadTrayIcon();
+        tray.Icon = trayIcon;
+        previous?.Dispose();
+    }));
     private void ExitApplication() { IsExiting = true; session?.Abort(); Shutdown(); }
     protected override void OnExit(ExitEventArgs e)
     {
@@ -102,6 +119,7 @@ public partial class App : Application
         SystemEvents.DisplaySettingsChanged -= DisplaySettingsChanged;
         hotkey?.Dispose();
         if (tray is not null) { tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose(); }
+        trayIcon?.Dispose();
         instanceMutex?.Dispose();
         base.OnExit(e);
     }

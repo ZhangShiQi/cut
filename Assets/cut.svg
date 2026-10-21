@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 32 32" fill="none">
+  <title>Cut — capture frame</title>
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="#197B68"/>
+  <path d="M13 7H7V13H10V10H13Z M19 7H25V13H22V10H19Z M7 19V25H13V22H10V19Z M25 19V25H19V22H22V19Z" fill="#FFFFFF"/>
+  <rect x="14" y="14" width="4" height="4" rx="0.75" fill="#8AF2D5"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <title>Cut — small-size capture frame</title>
+  <!-- Optical variant: full tile, two-pixel corner arms, integer-aligned at 16px. -->
+  <rect width="16" height="16" rx="4" fill="#197B68"/>
+  <path d="M7 3H3V7H5V5H7Z M9 3H13V7H11V5H9Z M3 9V13H7V11H5V9Z M13 9V13H9V11H11V9Z" fill="#FFFFFF"/>
+  <rect x="7" y="7" width="2" height="2" fill="#8AF2D5"/>
+</svg>

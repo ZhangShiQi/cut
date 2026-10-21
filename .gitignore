@@ -23,3 +23,6 @@ __pycache__/
 .env.*
 *.pfx
 *.p12
+
+# Optional icon-generation dependencies
+node_modules/

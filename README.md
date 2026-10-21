@@ -1,6 +1,6 @@
 # Cut
 
-Windows 截图工具，使用 C# / WPF 和 Win32。默认快捷键 **Ctrl + Alt + A**；截图和二维码识别全程在本地处理。当前版本 **0.2.0**。
+Windows 截图工具，使用 C# / WPF 和 Win32。默认快捷键 **Ctrl + Alt + A**；截图和二维码识别全程在本地处理。当前版本 **0.2.1**。
 
 ## 运行
 
@@ -63,6 +63,8 @@ dotnet publish .\Cut.csproj -c Release -o .\artifacts\publish
 ```
 
 ## 实现
+
+程序、窗口和托盘使用统一的截图取景框图标。SVG 源文件和多尺寸 ICO 位于 `Assets`；托盘采用适合小尺寸的加粗版本。ICO 已嵌入程序，运行时不依赖外部图标文件。重新生成图标的方法见 `Assets/README.md`。
 
 - `CaptureService`：GDI 屏幕快照及按物理像素裁剪、拼接。
 - `SelectionController`：独立的框选、移动、调整大小逻辑。
