@@ -55,7 +55,12 @@ public sealed class OverlayWindow : Window
         surface.MouseMove += OnMouseMove;
         surface.MouseLeftButtonUp += OnMouseUp;
         surface.MouseRightButtonDown += (_, e) => { surface.ReleaseMouseCapture(); session.RightClick(); e.Handled = true; };
-        surface.LostMouseCapture += (_, _) => { if (session.Selection.IsDragging) session.EndDrag(NativeMethods.CursorPosition()); };
+        surface.LostMouseCapture += (_, _) =>
+        {
+            if (!session.Interaction.IsPointerDown) return;
+            session.Interaction.LoseCapture();
+            session.EndDrag(NativeMethods.CursorPosition());
+        };
         Closing += (_, e) =>
         {
             if (session.IsFinished) return;
@@ -83,7 +88,8 @@ public sealed class OverlayWindow : Window
         session.ClearStatus();
         var p = NativeMethods.CursorPosition();
         if (e.ClickCount == 2 && session.Selection.Selection.Contains(p)) { await session.CopyAsync(this); return; }
-        session.Selection.Begin(p, HitTolerance);
+        var dpi = VisualTreeHelper.GetDpi(surface);
+        session.Interaction.Press(p, HitTolerance, (int)Math.Ceiling(SystemParameters.MinimumHorizontalDragDistance * dpi.DpiScaleX), (int)Math.Ceiling(SystemParameters.MinimumVerticalDragDistance * dpi.DpiScaleY));
         surface.CaptureMouse();
         session.Update();
         e.Handled = true;
@@ -92,7 +98,10 @@ public sealed class OverlayWindow : Window
     {
         if (session.Busy) return;
         var p = NativeMethods.CursorPosition();
-        if (session.Selection.IsDragging) { session.Selection.Update(p, session.Snapshot.Bounds); session.Update(); }
+        var previous = session.Interaction.DisplaySelection;
+        bool wasPreview = session.Interaction.IsPreview;
+        session.Interaction.Move(p);
+        if (previous != session.Interaction.DisplaySelection || wasPreview != session.Interaction.IsPreview) session.Update();
         var edge = session.Selection.HitEdge(p, HitTolerance);
         surface.Cursor = edge switch
         {
@@ -105,9 +114,9 @@ public sealed class OverlayWindow : Window
     }
     private void OnMouseUp(object sender, MouseButtonEventArgs e)
     {
-        if (!session.Selection.IsDragging) return;
+        if (!session.Interaction.IsPointerDown) return;
         var p = NativeMethods.CursorPosition();
-        session.Selection.Update(p, session.Snapshot.Bounds);
+        session.Interaction.Release(p);
         session.EndDrag(p);
         surface.ReleaseMouseCapture();
         e.Handled = true;
@@ -115,7 +124,8 @@ public sealed class OverlayWindow : Window
     private async void OnKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape) { session.Cancel(); e.Handled = true; return; }
-        if (session.Busy) return;
+        if (session.Busy || session.Interaction.IsPointerDown) return;
+        if (e.Key == Key.Enter || (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.C or Key.S or Key.Q)) session.ConfirmPreview();
         if (e.Key == Key.Q && Keyboard.Modifiers == ModifierKeys.Control) await session.RecognizeAsync(this);
         else if (e.Key == Key.Enter || (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)) await session.CopyAsync(this);
         else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control) session.Save(this);
@@ -154,12 +164,12 @@ internal sealed class SelectionSurface : FrameworkElement
         double w = ActualWidth, h = ActualHeight;
         if (w <= 0 || h <= 0) return;
         dc.DrawImage(monitor.Image, new Rect(0, 0, w, h));
-        var selection = session.Selection.Selection;
+        var selection = session.Interaction.DisplaySelection;
         var part = selection.Intersect(monitor.Bounds);
         if (part.IsEmpty)
         {
             dc.DrawRectangle(Shade, null, new Rect(0, 0, w, h));
-            if (selection.IsEmpty) DrawLabel(dc, "拖拽选择区域  ·  Esc 取消", 24, 24, w);
+            if (selection.IsEmpty) DrawLabel(dc, "移动鼠标预选窗口  ·  拖拽自由框选  ·  Esc 取消", 24, 24, w);
             return;
         }
         double sx = w / monitor.Bounds.Width, sy = h / monitor.Bounds.Height;
@@ -170,11 +180,14 @@ internal sealed class SelectionSurface : FrameworkElement
         dc.DrawRectangle(Shade, null, new Rect(r.Right, r.Top, Math.Max(0, w - r.Right), r.Height));
         var full = new Rect((selection.X - monitor.Bounds.X) * sx, (selection.Y - monitor.Bounds.Y) * sy, selection.Width * sx, selection.Height * sy);
         dc.DrawRectangle(null, new Pen(Accent, 1.5), full);
+        if (!session.Interaction.IsPreview)
         foreach (double x in new[] { full.Left, full.Left + full.Width / 2, full.Right })
             foreach (double y in new[] { full.Top, full.Top + full.Height / 2, full.Bottom })
                 if (x != full.Left + full.Width / 2 || y != full.Top + full.Height / 2)
                     dc.DrawRectangle(Brushes.White, new Pen(Accent, 1), new Rect(x - 3, y - 3, 6, 6));
-        DrawLabel(dc, $"{selection.Width} × {selection.Height} px", Math.Max(8, r.Left), r.Top >= 35 ? r.Top - 31 : r.Top + 9, w);
+        string label = $"{selection.Width} × {selection.Height} px";
+        if (session.Interaction.IsPreview) label += "  ·  单击选定，拖拽框选";
+        DrawLabel(dc, label, Math.Max(8, r.Left), r.Top >= 35 ? r.Top - 31 : r.Top + 9, w);
     }
     private void DrawLabel(DrawingContext dc, string value, double x, double y, double width)
     {

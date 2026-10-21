@@ -22,13 +22,16 @@ public sealed class CaptureSession
     public bool IsFinished => finished;
     public DesktopSnapshot Snapshot { get; }
     public SelectionController Selection { get; } = new();
+    public CaptureInteraction Interaction { get; }
     public bool Busy { get; private set; }
     public event Action? Completed;
-    public CaptureSession(DesktopSnapshot snapshot) : this(snapshot, results => new QrResultWindow(results)) { }
-    internal CaptureSession(DesktopSnapshot snapshot, Func<IReadOnlyList<QrCodeResult>, QrResultWindow> createResultWindow)
+    public CaptureSession(DesktopSnapshot snapshot, IReadOnlyList<WindowCandidate>? windowTargets = null) : this(snapshot, results => new QrResultWindow(results), windowTargets) { }
+    internal CaptureSession(DesktopSnapshot snapshot, Func<IReadOnlyList<QrCodeResult>, QrResultWindow> createResultWindow, IReadOnlyList<WindowCandidate>? windowTargets = null)
     {
         Snapshot = snapshot;
         this.createResultWindow = createResultWindow;
+        var targets = windowTargets ?? Array.Empty<WindowCandidate>();
+        Interaction = new CaptureInteraction(Selection, snapshot.Bounds, p => WindowDetectionService.FindAt(p, targets, snapshot));
     }
 
     public void Show()
@@ -43,6 +46,8 @@ public sealed class CaptureSession
         var active = windows.FirstOrDefault(w => w.Monitor.Bounds.Contains(cursor)) ?? windows[0];
         active.Activate();
         active.Focus();
+        Interaction.Hover(cursor);
+        Update();
     }
     public void Update() { foreach (var window in windows) window.Refresh(window == toolbarOwner && !Selection.IsDragging && !Selection.Selection.IsEmpty); }
     public void EndDrag(PixelPoint cursor)
@@ -56,7 +61,11 @@ public sealed class CaptureSession
     {
         if (Busy) return;
         if (Selection.Selection.IsEmpty) Finish();
-        else { Selection.Clear(); Update(); }
+        else { StatusMessage = ""; Interaction.Reset(NativeMethods.CursorPosition()); Update(); }
+    }
+    public void ConfirmPreview()
+    {
+        if (Interaction.ConfirmPreview()) EndDrag(NativeMethods.CursorPosition());
     }
     public void ClearStatus() => StatusMessage = "";
     public void Cancel() { if (!Busy || IsRecognizing) Finish(); }
@@ -65,6 +74,7 @@ public sealed class CaptureSession
     {
         if (finished) return;
         finished = true;
+        Interaction.LoseCapture();
         recognition?.Cancel();
         resultWindow?.Close();
         foreach (var window in windows) window.Close();

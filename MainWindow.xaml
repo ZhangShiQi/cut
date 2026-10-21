@@ -17,7 +17,7 @@
         </StackPanel>
         <TextBlock x:Name="StatusText" Foreground="#197B68" TextWrapping="Wrap" FontSize="12" MinHeight="36"/>
         <Separator Margin="0,8,0,15" Background="#E9EDF3"/>
-        <TextBlock Text="拖拽框选，拖动边框调整范围。" Foreground="#65758A" FontSize="13"/>
+        <TextBlock Text="单击选中鼠标下的窗口，也可拖拽自由框选。" Foreground="#65758A" FontSize="13"/>
         <TextBlock Text="Enter 复制  ·  Ctrl + S 保存  ·  Esc 取消" Foreground="#65758A" FontSize="13" Margin="0,8,0,0"/>
         <TextBlock Text="Ctrl + Q 识别选区内的二维码" Foreground="#197B68" FontSize="13" Margin="0,8,0,0"/>
       </StackPanel>

@@ -27,6 +27,7 @@ public partial class App : Application
         base.OnStartup(e);
         if (e.Args.Contains("--self-test")) { Shutdown(SelfTests.Run()); return; }
         if (e.Args.Contains("--qr-test")) { Shutdown(await QrTests.RunAsync()); return; }
+        if (e.Args.Contains("--window-test")) { Shutdown(await WindowSelectionTests.RunAsync()); return; }
         if (e.Args.Contains("--smoke-test")) { Shutdown(await SelfTests.SmokeAsync()); return; }
         instanceMutex = new Mutex(true, "Local\\Cut.Screenshot.SingleInstance", out bool created);
         if (!created) { MessageBox.Show("Cut 已在运行，请通过托盘图标或截图快捷键使用。", "Cut"); Shutdown(); return; }
@@ -77,7 +78,8 @@ public partial class App : Application
             // Let DWM remove our settings/menu before freezing the desktop.
             await Task.Delay(160);
             if (IsExiting) return;
-            session = new CaptureSession(CaptureService.Capture());
+            var windowTargets = WindowDetectionService.Capture();
+            session = new CaptureSession(CaptureService.Capture(), windowTargets);
             session.Completed += () => session = null;
             session.Show();
         }

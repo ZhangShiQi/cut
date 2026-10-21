@@ -75,5 +75,6 @@ public sealed class SelectionController
         else Selection = PixelRect.Between(anchor, p);
     }
     public void End() => IsDragging = false;
+    public void SetSelection(PixelRect rect) { IsDragging = false; Selection = rect; }
     public void Clear() { IsDragging = false; Selection = default; }
 }

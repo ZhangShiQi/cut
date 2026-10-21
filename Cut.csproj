@@ -9,7 +9,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Cut</AssemblyName>
     <RootNamespace>Cut</RootNamespace>
-    <Version>0.2.1</Version>
+    <Version>0.3.1</Version>
     <ApplicationIcon>Assets\Cut.ico</ApplicationIcon>
     <!-- WPF owns application startup; WinForms is used only for the tray icon.
          DPI awareness must be established by the manifest before any HWND exists. -->
