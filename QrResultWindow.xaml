@@ -1,0 +1,24 @@
+<Window x:Class="Cut.QrResultWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Cut · 二维码识别结果" Width="700" Height="580" MinWidth="520" MinHeight="420" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True" Background="#F5F7FB" FontFamily="Microsoft YaHei UI" FontSize="14">
+  <Grid Margin="24">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel Margin="0,0,0,18">
+      <TextBlock Text="二维码识别结果" FontSize="24" FontWeight="SemiBold" Foreground="#12243A"/>
+      <TextBlock x:Name="SummaryText" Margin="0,8,0,0" Foreground="#65758A" TextWrapping="Wrap"/>
+    </StackPanel>
+    <ListBox x:Name="ResultList" Grid.Row="1" MaxHeight="145" Margin="0,0,0,16" BorderBrush="#DCE4ED" SelectionChanged="SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+      <ListBox.ItemTemplate><DataTemplate>
+        <StackPanel Margin="8,6">
+          <TextBlock Text="{Binding Kind}" Foreground="#197B68" FontSize="12"/>
+          <TextBlock Text="{Binding Preview}" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
+        </StackPanel>
+      </DataTemplate></ListBox.ItemTemplate>
+    </ListBox>
+    <TextBox x:Name="ContentText" Grid.Row="2" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Padding="14" BorderBrush="#DCE4ED" Background="White" Foreground="#12243A"/>
+    <TextBlock x:Name="StatusText" Grid.Row="3" Text="关闭此窗口可返回截图选区。" Foreground="#65758A" Margin="0,12,0,8" TextWrapping="Wrap"/>
+    <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
+      <Button x:Name="BackButton" Content="返回选区" Click="BackClick"/>
+      <Button x:Name="OpenButton" Content="打开链接" Click="OpenClick"/>
+      <Button x:Name="CopyButton" Content="复制内容" Click="CopyClick" Background="#197B68" Foreground="White" BorderThickness="0"/>
+    </WrapPanel>
+  </Grid>
+</Window>

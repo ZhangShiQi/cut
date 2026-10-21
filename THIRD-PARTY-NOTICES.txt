@@ -1,0 +1,8 @@
+Cut uses ZXing.Net 0.16.11, unmodified.
+Project: https://github.com/micjahn/ZXing.Net
+Copyright ZXing.Net authors and ZXing authors.
+License: Apache License, Version 2.0.
+The full license is included in Licenses/ZXing.Net-Apache-2.0.txt.
+
+The repository's synthetic QR test fixtures were generated using ReportLab.
+They contain only example.com/example.org links and sample text.

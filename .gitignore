@@ -1,0 +1,25 @@
+# Build outputs and local releases
+bin/
+obj/
+artifacts/
+
+# IDE and local tooling state
+.vs/
+.idea/
+.dotnet/
+.codex/
+.agents/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Python fixture-generator caches
+__pycache__/
+*.py[cod]
+
+# Local credentials / environment overrides
+.env
+.env.*
+*.pfx
+*.p12
