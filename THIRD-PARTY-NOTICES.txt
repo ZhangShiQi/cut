@@ -6,3 +6,31 @@ The full license is included in Licenses/ZXing.Net-Apache-2.0.txt.
 
 The repository's synthetic QR test fixtures were generated using ReportLab.
 They contain only example.com/example.org links and sample text.
+
+Offline OCR:
+- PaddleOCR PP-OCRv5 mobile detection and recognition weights (Apache-2.0).
+  https://github.com/PaddlePaddle/PaddleOCR
+  ONNX conversion and embedded character dictionary distributed by RapidAI/RapidOCR
+  (Apache-2.0): https://github.com/RapidAI/RapidOCR
+  Exact model URLs and SHA256 hashes: Models/manifest.json.
+  Cut implements its own C# pipeline; RapidOCR Python is not required at runtime.
+  Licenses/PaddleOCR-Apache-2.0.txt and Licenses/RapidOCR-Apache-2.0.txt.
+- Microsoft.ML.OnnxRuntime / Managed 1.31.0 (MIT).
+  https://github.com/microsoft/onnxruntime
+  Licenses/ONNX-Runtime-MIT.txt and Licenses/ONNX-Runtime-ThirdPartyNotices.txt.
+- OpenCvSharp4 / runtime.win.slim 4.13.0.20260627 (Apache-2.0), unmodified.
+  https://github.com/shimat/opencvsharp
+  Includes OpenCV 4.13 native code. https://github.com/opencv/opencv
+  Licenses/OpenCvSharp-Apache-2.0.txt and Licenses/OpenCV-Apache-2.0.txt.
+  Native dependency notices: Licenses/OpenCV-ThirdPartyNotices.txt,
+  Licenses/Intel-ITT-BSD-3-Clause.txt, Licenses/Intel-IPP-EULA.rtf,
+  and Licenses/Intel-IPP-ThirdParty.txt.
+- System.Numerics.Tensors and the self-contained .NET runtime are Microsoft .NET
+  components; their MIT license and third-party notices accompany the runtime.
+- Portable releases may include Microsoft Visual C++ runtime DLLs from the
+  Visual Studio 2022 REDIST directory, unmodified, under Microsoft's
+  redistributable-code terms. They are not covered by this project's licenses.
+  https://learn.microsoft.com/visualstudio/releases/2022/redistribution
+
+OCR test images are rendered from synthetic sample text by WPF using the local
+Microsoft YaHei UI font. No font binaries or real user screenshots are bundled.

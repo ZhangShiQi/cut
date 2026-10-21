@@ -26,3 +26,7 @@ __pycache__/
 
 # Optional icon-generation dependencies
 node_modules/
+
+# Downloaded OCR weights (reproduce with Tools/download-ocr-models.ps1)
+Models/*.onnx
+Models/*.download

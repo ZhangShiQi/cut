@@ -43,6 +43,7 @@ public sealed class OverlayWindow : Window
         toolbarContent.Children.Add(buttons);
         toolbar = new Border { Background = new SolidColorBrush(Color.FromRgb(25, 34, 49)), CornerRadius = new CornerRadius(8), Padding = new Thickness(5), Child = toolbarContent, Visibility = Visibility.Collapsed };
         AddButton(buttons, "识别二维码", "Ctrl + Q", async (_, _) => await session.RecognizeAsync(this));
+        AddButton(buttons, "识别文字", "Ctrl + T", async (_, _) => await session.RecognizeTextAsync(this));
         AddButton(buttons, "保存", "Ctrl + S", (_, _) => session.Save(this));
         cancelButton = AddButton(buttons, "取消", "Esc", (_, _) => session.Cancel());
         AddButton(buttons, "复制 ✓", "Enter / Ctrl + C", async (_, _) => await session.CopyAsync(this));
@@ -125,8 +126,9 @@ public sealed class OverlayWindow : Window
     {
         if (e.Key == Key.Escape) { session.Cancel(); e.Handled = true; return; }
         if (session.Busy || session.Interaction.IsPointerDown) return;
-        if (e.Key == Key.Enter || (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.C or Key.S or Key.Q)) session.ConfirmPreview();
+        if (e.Key == Key.Enter || (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.C or Key.S or Key.Q or Key.T)) session.ConfirmPreview();
         if (e.Key == Key.Q && Keyboard.Modifiers == ModifierKeys.Control) await session.RecognizeAsync(this);
+        else if (e.Key == Key.T && Keyboard.Modifiers == ModifierKeys.Control) await session.RecognizeTextAsync(this);
         else if (e.Key == Key.Enter || (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)) await session.CopyAsync(this);
         else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control) session.Save(this);
         else return;

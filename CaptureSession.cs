@@ -15,8 +15,10 @@ public sealed class CaptureSession
     private OverlayWindow? toolbarOwner;
     private bool finished;
     private CancellationTokenSource? recognition;
-    private QrResultWindow? resultWindow;
+    private Window? resultWindow;
     private readonly Func<IReadOnlyList<QrCodeResult>, QrResultWindow> createResultWindow;
+    internal Func<System.Windows.Media.Imaging.BitmapSource, OcrResult, OcrResultWindow> CreateOcrResultWindow { get; set; } = (image, result) => new OcrResultWindow(image, result);
+    internal Func<System.Windows.Media.Imaging.BitmapSource, CancellationToken, Task<OcrResult>> RecognizeText { get; set; } = OcrService.RecognizeAsync;
     public bool IsRecognizing { get; private set; }
     public string StatusMessage { get; private set; } = "";
     public bool IsFinished => finished;
@@ -114,6 +116,48 @@ public sealed class CaptureSession
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception ex) { if (!finished) StatusMessage = "识别失败：" + ex.Message; }
+        finally
+        {
+            recognition = null;
+            resultWindow = null;
+            IsRecognizing = false;
+            Busy = false;
+            if (!finished) { Update(); owner.Activate(); }
+        }
+    }
+    public async Task RecognizeTextAsync(OverlayWindow owner)
+    {
+        if (Busy || Selection.IsDragging || Selection.Selection.IsEmpty || finished) return;
+        Busy = true;
+        IsRecognizing = true;
+        StatusMessage = "正在识别文字… 首次使用需加载模型 · Esc 取消";
+        using var cancellation = new CancellationTokenSource();
+        recognition = cancellation;
+        Update();
+        try
+        {
+            if ((long)Selection.Selection.Width * Selection.Selection.Height > OcrService.MaxPixels)
+                throw new InvalidOperationException("选区过大，请缩小到文字所在区域后重试（最多 1600 万像素）。");
+            var image = Snapshot.Crop(Selection.Selection);
+            var result = await RecognizeText(image, cancellation.Token);
+            if (finished || cancellation.IsCancellationRequested) return;
+            IsRecognizing = false;
+            if (result.Lines.Count == 0)
+            {
+                StatusMessage = "未找到清晰文字，请框选完整文字区域后重试。";
+                return;
+            }
+            StatusMessage = "";
+            Update();
+            var dialog = CreateOcrResultWindow(image, result);
+            dialog.Owner = owner;
+            resultWindow = dialog;
+            dialog.ShowDialog();
+            resultWindow = null;
+            if (dialog.ActionCompleted && !finished) Finish();
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception ex) { if (!finished) StatusMessage = "文字识别失败：" + ex.Message; }
         finally
         {
             recognition = null;
