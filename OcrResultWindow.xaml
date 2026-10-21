@@ -1,32 +1,66 @@
-<Window x:Class="Cut.OcrResultWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Cut · 文字识别结果" Icon="Assets/Cut.ico" Width="960" Height="620" MinWidth="720" MinHeight="450" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True" Background="#F5F7FB" FontFamily="Microsoft YaHei UI" FontSize="14">
+<Window x:Class="Cut.OcrResultWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Cut · 文字识别与翻译" Icon="Assets/Cut.ico" Width="1120" Height="740" MinWidth="820" MinHeight="560" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True" Background="#F5F7FB" FontFamily="Microsoft YaHei UI" FontSize="14">
   <Grid Margin="24">
-    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel Margin="0,0,0,18">
-      <TextBlock Text="文字识别结果" FontSize="24" FontWeight="SemiBold" Foreground="#12243A"/>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel Margin="0,0,0,12">
+      <TextBlock Text="文字识别与翻译" FontSize="24" FontWeight="SemiBold" Foreground="#12243A"/>
       <TextBlock x:Name="SummaryText" Margin="0,8,0,0" Foreground="#65758A" TextWrapping="Wrap"/>
     </StackPanel>
-    <Grid Grid.Row="1">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
-      <Border Background="White" BorderBrush="#DCE4ED" BorderThickness="1" Padding="12">
-        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-          <TextBlock Text="原始截图 · 可滚动查看" Foreground="#65758A" FontSize="12" Margin="0,0,0,10"/>
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-            <Image x:Name="PreviewImage" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top"/>
-          </ScrollViewer>
-        </Grid>
+    <Expander Grid.Row="1" Header="查看原始截图" Foreground="#65758A" Margin="0,0,0,12">
+      <Border Background="White" BorderBrush="#DCE4ED" BorderThickness="1" Padding="8" Margin="0,8,0,0">
+        <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+          <Image x:Name="PreviewImage" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        </ScrollViewer>
       </Border>
-      <Grid Grid.Column="2">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-        <TextBlock Text="可直接编辑 · Ctrl + C 复制选中文字" Foreground="#65758A" FontSize="12" Margin="0,0,0,10"/>
+    </Expander>
+    <StackPanel Grid.Row="2" Margin="0,0,0,14">
+      <WrapPanel VerticalAlignment="Center">
+        <TextBlock Text="原文" VerticalAlignment="Center" Margin="0,0,8,0"/>
+        <ComboBox x:Name="SourceLanguage" Width="105" Height="32" VerticalContentAlignment="Center" SelectionChanged="LanguageChanged">
+          <ComboBoxItem Content="自动检测" Tag="auto" IsSelected="True"/><ComboBoxItem Content="简体中文" Tag="zh-Hans"/><ComboBoxItem Content="英文" Tag="en"/>
+        </ComboBox>
+        <TextBlock Text="→" VerticalAlignment="Center" Margin="10,0"/>
+        <ComboBox x:Name="TargetLanguage" Width="100" Height="32" VerticalContentAlignment="Center" SelectionChanged="LanguageChanged">
+          <ComboBoxItem Content="简体中文" Tag="zh-Hans" IsSelected="True"/><ComboBoxItem Content="英文" Tag="en"/>
+        </ComboBox>
+        <Button x:Name="TranslateAllButton" Content="翻译全部" Click="TranslateAllClick" Margin="12,4,4,4"/>
+        <Button x:Name="TranslateSelectionButton" Content="翻译选中" Click="TranslateSelectionClick"/>
+        <Button x:Name="CancelTranslationButton" Content="取消翻译" Click="CancelTranslationClick" IsEnabled="False"/>
+        <Button x:Name="SettingsButton" Content="翻译设置" Click="SettingsClick"/>
+      </WrapPanel>
+      <TextBlock Text="在线翻译仅发送待翻译文字至配置的 Azure 服务，不发送截图；需先配置自己的服务密钥。" Foreground="#65758A" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+    </StackPanel>
+    <Grid Grid.Row="3">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,10">
+          <TextBlock Text="原文" FontWeight="SemiBold" Foreground="#12243A"/>
+          <TextBlock Text="可直接校对和编辑 · Ctrl + C 复制选中" FontSize="12" Foreground="#65758A" Margin="0,5,0,0"/>
+        </StackPanel>
         <TextBox x:Name="ContentText" Grid.Row="1" AcceptsReturn="True" AcceptsTab="True" IsUndoEnabled="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Padding="14" BorderBrush="#DCE4ED" Foreground="#12243A" Background="White" SelectionChanged="SelectionChanged" TextChanged="TextChanged"/>
+        <WrapPanel Grid.Row="2" Margin="0,8,0,0">
+          <Button x:Name="MergeButton" Content="合并换行" ToolTip="可按 Ctrl + Z 撤销" Click="MergeClick" Padding="12,8"/>
+          <Button x:Name="CopySelectionButton" Content="复制选中" Click="CopySelectionClick" Padding="12,8"/>
+          <Button x:Name="CopyAllButton" Content="复制原文并完成" ToolTip="原文框内 Ctrl + Enter" Click="CopyAllClick" Padding="12,8"/>
+        </WrapPanel>
+      </Grid>
+      <Grid Grid.Column="2">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,10">
+          <TextBlock Text="译文" FontWeight="SemiBold" Foreground="#197B68"/>
+          <TextBlock x:Name="TranslationStateText" Text="选择目标语言，点击翻译后在此查看和编辑。" TextTrimming="CharacterEllipsis" FontSize="12" Foreground="#65758A" Margin="0,5,0,0"/>
+        </StackPanel>
+        <TextBox x:Name="TranslationText" Grid.Row="1" AcceptsReturn="True" AcceptsTab="True" IsUndoEnabled="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Padding="14" BorderBrush="#ABD4C8" Foreground="#12243A" Background="White" SelectionChanged="SelectionChanged" TextChanged="TranslationTextChanged"/>
+        <WrapPanel Grid.Row="2" Margin="0,8,0,0">
+          <Button x:Name="CopyTranslationSelectionButton" Content="复制选中译文" Click="CopyTranslationSelectionClick" Padding="12,8"/>
+          <Button x:Name="CopyTranslationAllButton" Content="复制译文并完成" ToolTip="译文框内 Ctrl + Enter" Click="CopyTranslationAllClick" Background="#197B68" Foreground="White" BorderThickness="0" Padding="12,8"/>
+        </WrapPanel>
       </Grid>
     </Grid>
-    <TextBlock x:Name="StatusText" Grid.Row="2" Text="请核对识别结果；返回选区后可重新框选。" Foreground="#65758A" Margin="0,12,0,8" TextWrapping="Wrap"/>
-    <WrapPanel Grid.Row="3" HorizontalAlignment="Right">
-      <Button Content="返回选区" Click="BackClick"/>
-      <Button x:Name="MergeButton" Content="合并换行" ToolTip="合并当前文本的换行，可按 Ctrl + Z 撤销" Click="MergeClick"/>
-      <Button x:Name="CopySelectionButton" Content="复制选中" Click="CopySelectionClick"/>
-      <Button x:Name="CopyAllButton" Content="复制全部并完成" ToolTip="Ctrl + Enter" Click="CopyAllClick" Background="#197B68" Foreground="White" BorderThickness="0"/>
-    </WrapPanel>
+    <Grid Grid.Row="4" Margin="0,12,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock x:Name="StatusText" Text="请核对识别结果；返回选区后可重新框选。" Foreground="#65758A" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+      <Button Grid.Column="1" Content="返回选区" Click="BackClick"/>
+    </Grid>
   </Grid>
 </Window>

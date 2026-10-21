@@ -1,0 +1,32 @@
+<Window x:Class="Cut.TranslationSettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Cut · 翻译服务设置" Icon="Assets/Cut.ico" Width="640" Height="660" MinWidth="520" MinHeight="480" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True" Background="#F5F7FB" FontFamily="Microsoft YaHei UI" FontSize="14">
+  <Grid Margin="24">
+    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <TextBlock Text="翻译服务设置" FontSize="24" FontWeight="SemiBold" Foreground="#12243A"/>
+        <TextBlock Text="Microsoft Azure Translator · 中英互译" Foreground="#65758A" Margin="0,8,0,16"/>
+        <Border Background="#E8F4EF" Padding="14" CornerRadius="8" Margin="0,0,0,16">
+          <TextBlock Text="OCR 仍在本机运行。点击翻译时，仅将待翻译的文字发送给此处配置的 Azure 服务，不发送截图。服务可能按你的 Azure 套餐计费。" TextWrapping="Wrap" Foreground="#236453"/>
+        </Border>
+        <StackPanel x:Name="SettingsFields">
+          <TextBlock Text="服务地址" FontWeight="SemiBold"/>
+          <TextBox x:Name="EndpointText" Margin="0,7,0,5" Padding="8"/>
+          <TextBlock Text="通常使用默认地址；也支持 Azure 资源的自定义域名。" Foreground="#65758A" FontSize="12" TextWrapping="Wrap"/>
+          <TextBlock Text="区域（Region）" FontWeight="SemiBold" Margin="0,16,0,0"/>
+          <TextBox x:Name="RegionText" Margin="0,7,0,5" Padding="8"/>
+          <TextBlock Text="例如 eastasia。区域型 / 多服务资源必填；全局 Translator 资源可留空。" Foreground="#65758A" FontSize="12" TextWrapping="Wrap"/>
+          <TextBlock Text="服务密钥（Key）" FontWeight="SemiBold" Margin="0,16,0,0"/>
+          <PasswordBox x:Name="KeyText" Margin="0,7,0,5" Padding="8"/>
+          <TextBlock Text="保存时使用 Windows 当前用户加密。清空密钥后保存可停用翻译，OCR 不受影响。" Foreground="#65758A" FontSize="12" TextWrapping="Wrap"/>
+        </StackPanel>
+        <Button Content="查看 Azure 配置说明 ↗" Click="HelpClick" HorizontalAlignment="Left" Padding="10,6" Margin="0,14,0,0"/>
+      </StackPanel>
+    </ScrollViewer>
+    <TextBlock x:Name="StatusText" Grid.Row="1" Text="测试连接会发送示例文字 Hello，不会发送截图内容。" Foreground="#65758A" TextWrapping="Wrap" Margin="0,14,0,8"/>
+    <WrapPanel Grid.Row="2" HorizontalAlignment="Right">
+      <Button Content="取消" Click="CancelClick"/>
+      <Button x:Name="TestButton" Content="测试连接" Click="TestClick"/>
+      <Button x:Name="SaveButton" Content="保存" Click="SaveClick" Background="#197B68" Foreground="White" BorderThickness="0"/>
+    </WrapPanel>
+  </Grid>
+</Window>
