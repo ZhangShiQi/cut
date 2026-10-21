@@ -30,6 +30,7 @@ public partial class App : Application
         if (e.Args.Contains("--window-test")) { Shutdown(await WindowSelectionTests.RunAsync()); return; }
         if (e.Args.Contains("--ocr-test")) { Shutdown(await OcrTests.RunAsync()); return; }
         if (e.Args.Contains("--translation-test")) { Shutdown(await TranslationTests.RunAsync()); return; }
+        if (e.Args.Contains("--ai-test")) { Shutdown(await AiTests.RunAsync()); return; }
         if (e.Args.Contains("--smoke-test")) { Shutdown(await SelfTests.SmokeAsync()); return; }
         instanceMutex = new Mutex(true, "Local\\Cut.Screenshot.SingleInstance", out bool created);
         if (!created) { MessageBox.Show("Cut 已在运行，请通过托盘图标或截图快捷键使用。", "Cut"); Shutdown(); return; }
@@ -71,6 +72,8 @@ public partial class App : Application
     }
     public async Task StartCaptureAsync()
     {
+        var aiSettings = Windows.OfType<AiSettingsWindow>().FirstOrDefault(w => w.IsVisible);
+        if (aiSettings is not null) { aiSettings.Activate(); return; }
         var translationSettings = Windows.OfType<TranslationSettingsWindow>().FirstOrDefault(w => w.IsVisible);
         if (translationSettings is not null) { translationSettings.Activate(); return; }
         if (starting || session is not null || IsExiting) return;

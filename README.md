@@ -1,10 +1,10 @@
 # Cut
 
-Windows 截图工具，使用 C# / WPF 和 Win32。默认快捷键 **Ctrl + Alt + A**；截图、二维码和文字识别全程在本地处理，可另行配置 Azure 在线中英翻译。当前版本 **0.5.0**。
+Windows 截图工具，使用 C# / WPF 和 Win32。默认快捷键 **Ctrl + Alt + A**；截图、二维码和文字识别全程在本地处理，可另行配置 Azure 在线中英翻译和 AI 文字助手。当前版本 **0.6.0**。
 
 ## 运行
 
-发布包支持 Windows 10/11 x64，包含 .NET 运行时、CPU OCR 引擎和模型。解压整个文件夹后运行 `Cut.exe`，无需安装 Python、配置接口密钥或下载模型。升级前从托盘退出旧版，不要只复制 EXE。
+发布包支持 Windows 10/11 x64，包含 .NET 运行时、CPU OCR 引擎和模型。解压整个文件夹后运行 `Cut.exe`；本地截图、二维码和 OCR 无需安装 Python、配置接口密钥或下载模型。升级前从托盘退出旧版，不要只复制 EXE。
 
 源码开发需要 .NET 8 或更高版本 SDK；普通开发构建需要 .NET 8 Desktop Runtime。首次构建先下载并校验模型：
 
@@ -87,6 +87,26 @@ dotnet run --project .\Cut.csproj
 
 本次交付为可配置版本：用户尚无 Azure Translator 资源，**没有进行真实密钥的在线翻译实测**。本地测试使用模拟 HTTP 响应验证请求、解析、错误处理和完整界面流程，不代表服务端翻译质量或账户连通性验证。取得资源后请先用设置页的“测试连接”验证自己的配置。
 
+## AI 助手
+
+截图后按 **Ctrl + T** 提取文字，再切换右侧的 **AI 助手** 页签。第一版基于 OCR 文字理解，支持读懂截图文字、解释报错、总结重点、润色和自定义提问；不具备图片视觉分析、图表/布局理解或自动执行命令的功能。
+
+1. 从主窗口点击“AI 模型设置”，或在 AI 页签点击“模型设置”。
+2. 填写兼容 Chat Completions 的**完整接口地址**（包括服务商要求的路径前缀和 `/chat/completions`）、模型 ID 和自己的 API Key。程序不附带模型账户或密钥，不自动选择模型。仅支持 Bearer Key 鉴权；不支持 Azure OpenAI 的 api-key/query-version 接口或仅支持 Responses 的接口。
+3. 远程服务使用 HTTPS；明确配置为本机回环地址时允许 HTTP 和空密钥，例如 `http://localhost:1234/v1/chat/completions`。本地模型服务需自行安装运行。
+4. “测试连接”使用当前填写但尚未保存的配置，只发送固定 Hello 示例与“请只回复 OK”任务；不发送截图或 OCR 原文。成功后点击“保存”。
+5. 选择任务及“全部原文 / 选中文字”，按需校对左侧原文。自定义模式填写问题后点击“生成回答”。选中范围为空时不会自动改为发送全文。
+6. 回答逐步显示，可停止、重新生成。生成结束或停止后可以编辑；Ctrl + C /“复制选中”保留窗口，“复制回答并完成”或回答框内 Ctrl + Enter 完成截图。在自定义问题框内 Ctrl + Enter 生成回答。
+
+- 仅点击生成时发送当前范围内的文字、任务和自定义问题；不上传截图，不自动提交，不附带历史回答。截图文字和模型回答只在内存中处理，程序不把它们或密钥写入日志。
+- 原文、选中范围、任务或问题变化时，取消旧请求并提示回答待更新；旧片段不会覆盖新结果。失败或停止时保留已有文字，部分回答提示可能不完整。原文保持独立，可随时校对。
+- 单次输入最多 20,000 个 UTF-16 字符，问题最多 2,000 字符；回答接收上限 64,000 字符，总响应与事件也有限制。请求最长 120 秒，无自动重试、重定向跟随或工具执行。实际模型上下文、计费与输出限制以服务商为准。
+- API Key 使用 DPAPI CurrentUser 加密存储在 `%LOCALAPPDATA%\Cut\ai.json`，与翻译、快捷键配置独立。更换电脑或 Windows 用户后重新填写；清空模型名称后保存可停用 AI。配置窗口打开时不会启动截图。
+- AI 输出为可编辑纯文本，不自动打开链接、运行代码或访问文件。内容理解依赖 OCR 准确性，遇到识别错误请先校对原文再生成。
+- 模型接口按官方 [Chat Completions 请求格式](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) 和 [流式事件格式](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events) 实现。服务商需要支持相应的 system/user 消息、文本输出与 SSE 流，亦接受兼容 JSON 回答；不保证所有标为“兼容”的服务或模型均支持。
+
+本次未提供真实模型账户密钥，因此**未实测真实服务连通性、回答质量或计费**。自动测试使用模拟传输与合成文字，覆盖协议、加密存储、取消竞态及完整界面流程；配置实际服务后请先执行“测试连接”。
+
 ## 构建和验证
 
 ```powershell
@@ -103,6 +123,8 @@ Start-Process .\bin\Release\net8.0-windows\win-x64\Cut.exe -ArgumentList '--ocr-
 Get-Content .\artifacts\ocr-test.txt
 Start-Process .\bin\Release\net8.0-windows\win-x64\Cut.exe -ArgumentList '--translation-test' -Wait
 Get-Content .\artifacts\translation-test.txt
+Start-Process .\bin\Release\net8.0-windows\win-x64\Cut.exe -ArgumentList '--ai-test' -WindowStyle Hidden -Wait
+Get-Content .\artifacts\ai-test.txt
 ```
 
 `--self-test` 验证选区几何、跨屏像素、PNG 保存和快捷键冲突处理，不修改剪贴板。`--smoke-test` 短暂显示覆盖窗口，验证本机屏幕捕获、窗口位置并生成使用纯色测试背景的界面预览；不会把真实桌面保存到磁盘。
@@ -114,6 +136,8 @@ Get-Content .\artifacts\translation-test.txt
 `--ocr-test` 使用真实离线模型识别 WPF 渲染的中英文、深色背景、小字号、标点、多行、宽图与跨块长句样本，记录忽略空白的字符错误率和冷/热耗时；检查空白图、取消、模型校验、阅读顺序、编辑/复制/撤销以及完整截图会话。复制操作通过注入回调验证，不替换用户的剪贴板；结果是固定合成样本成绩，不代表所有截图的准确率。
 
 `--translation-test` 不访问网络、不使用真实密钥、不改动用户配置。使用模拟 HTTP 传输验证 Azure v3 协议、中英方向、Unicode/换行、仅发送文本、认证头、状态码和响应校验、超时/取消；使用真实 DPAPI 验证测试配置的加密存储。还验证原文译文编辑、选中翻译、复制命令、陈旧结果丢弃、配置窗口和连接测试流程，并保存合成界面预览。
+
+`--ai-test` 使用模拟 HTTP/SSE、合成文字和真实 DPAPI，验证五种任务、完整/选中原文、分段 UTF-8、JSON 回答、服务错误、超时取消、迟到片段丢弃、编辑复制、配置窗口和完整截图会话；不访问外网、不覆盖用户剪贴板或用户配置。生成正常与紧凑布局的合成预览。
 
 发布包含运行时的便携版（发布脚本也复制本机 Visual Studio REDIST 中的 C++ 运行库）：
 
@@ -137,6 +161,9 @@ Get-Content .\artifacts\translation-test.txt
 - `OcrResultWindow`：原图预览、文本编辑、部分/全部复制、合并换行和撤销。
 - `ITranslationService` / `AzureTranslationService`：可替换的翻译接口、Azure v3 请求与响应、超时取消和安全错误提示。
 - `TranslationSettingsStore` / `TranslationSettingsWindow`：DPAPI 密钥加密、独立配置、连接测试和设置界面。
+- `IAiService` / `CompatibleAiService`：任务提示、Chat Completions 文本请求、SSE/JSON 解析、取消、超时和响应大小限制。
+- `AiAssistantPanel`：任务与范围选择、流式回答、陈旧结果防护、编辑复制。
+- `AiSettingsStore` / `AiSettingsWindow`：独立模型配置、DPAPI 密钥加密、固定输入连接测试。
 - `LinkService`：仅将 HTTP/HTTPS 网页交给系统默认浏览器。
 
 ## 手工验收

@@ -22,40 +22,49 @@ public partial class OcrResultWindow : Window
     public bool ActionCompleted { get; private set; }
     public OcrResultWindow(BitmapSource image, OcrResult result) : this(image, result, ExportService.CopyTextAsync) { }
     internal OcrResultWindow(BitmapSource image, OcrResult result, Func<string, CancellationToken, Task> copyText,
-        ITranslationService? translationService = null, Func<TranslationSettings>? loadTranslationSettings = null)
+        ITranslationService? translationService = null, Func<TranslationSettings>? loadTranslationSettings = null,
+        IAiService? aiService = null, Func<AiSettings>? loadAiSettings = null)
     {
         InitializeComponent();
         this.copyText = copyText;
         this.translationService = translationService ?? new AzureTranslationService();
         this.loadTranslationSettings = loadTranslationSettings ?? new TranslationSettingsStore().Load;
         PreviewImage.Source = image;
-        SummaryText.Text = $"识别到 {result.Lines.Count} 个文本区域 · OCR 本地离线识别 · 原文与译文均可编辑";
+        SummaryText.Text = $"识别到 {result.Lines.Count} 个文本区域 · OCR 本地离线识别 · 原文、译文与 AI 回答可编辑";
         ContentText.Text = result.Text;
+        AiPanel.Configure(selected => selected ? ContentText.SelectedText : ContentText.Text, copyText, aiService, loadAiSettings);
+        AiPanel.Completed += () => { ActionCompleted = true; Close(); };
         BindCopy(ContentText, false); BindCopy(TranslationText, true);
         PreviewKeyDown += async (_, e) =>
         {
             if (e.Key == Key.Escape)
             {
-                if (translation is not null) CancelTranslation("已取消翻译，原文和已有译文已保留。");
+                if (AiPanel.IsGenerating) AiPanel.Stop("已停止，当前内容已保留；回答可能不完整。");
+                else if (translation is not null) CancelTranslation("已取消翻译，原文和已有译文已保留。");
                 else Close();
                 e.Handled = true;
             }
-            else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
+            else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control && !AiPanel.IsKeyboardFocusWithin)
             { e.Handled = true; await CopyAsync(false, TranslationText.IsKeyboardFocusWithin); }
         };
         Loaded += (_, _) => { ContentText.Focus(); ContentText.CaretIndex = 0; };
-        Closed += (_, _) => { lifetime.Cancel(); CancelTranslation(); };
+        Closed += (_, _) => { lifetime.Cancel(); CancelTranslation(); AiPanel.ClosePanel(); };
         initialized = true;
         RefreshButtons();
     }
     private void BindCopy(TextBox box, bool translated) => box.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy,
         async (_, e) => { e.Handled = true; await CopyAsync(true, translated); },
         (_, e) => { e.CanExecute = !busy && box.SelectionLength > 0; e.Handled = true; }));
-    private void SelectionChanged(object sender, RoutedEventArgs e) => RefreshButtons();
+    private void SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        RefreshButtons();
+        if (initialized && ReferenceEquals(sender, ContentText)) AiPanel.SourceSelectionChanged();
+    }
     private void TextChanged(object sender, TextChangedEventArgs e)
     {
         if (!initialized) return;
         InvalidateTranslation("原文已修改，译文待更新。");
+        AiPanel.SourceChanged();
         RefreshButtons();
     }
     private void TranslationTextChanged(object sender, TextChangedEventArgs e)
@@ -180,6 +189,8 @@ public partial class OcrResultWindow : Window
         SettingsButton.IsEnabled = !busy && translation is null;
     }
     internal string EditedText { get => ContentText.Text; set => ContentText.Text = value; }
+    internal AiAssistantPanel Assistant => AiPanel;
+    internal void ShowAi() => ResultTabs.SelectedIndex = 1;
     internal string EditedTranslation { get => TranslationText.Text; set => TranslationText.Text = value; }
     internal string Status => StatusText.Text;
     internal bool IsTranslationStale => staleTranslation;

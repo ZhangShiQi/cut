@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     }
     private async void StartCapture(object sender, RoutedEventArgs e) => await app.StartCaptureAsync();
     private void OpenTranslationSettings(object sender, RoutedEventArgs e) => new TranslationSettingsWindow { Owner = this }.ShowDialog();
+    private void OpenAiSettings(object sender, RoutedEventArgs e) => new AiSettingsWindow { Owner = this }.ShowDialog();
     protected override void OnClosing(CancelEventArgs e)
     {
         if (!app.IsExiting) { e.Cancel = true; Hide(); }

@@ -27,7 +27,10 @@
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <StackPanel VerticalAlignment="Center">
         <TextBlock Text="关闭窗口后仍在托盘运行" Foreground="#7B899B" FontSize="12"/>
-        <Button Content="翻译服务设置" Click="OpenTranslationSettings" HorizontalAlignment="Left" Padding="10,5" Margin="0,8,0,0"/>
+        <WrapPanel>
+          <Button Content="翻译服务设置" Click="OpenTranslationSettings" Padding="10,5" Margin="0,8,6,0"/>
+          <Button Content="AI 模型设置" Click="OpenAiSettings" Padding="10,5" Margin="0,8,0,0"/>
+        </WrapPanel>
       </StackPanel>
       <Button Grid.Column="1" Content="开始截图" Click="StartCapture" Background="#197B68" Foreground="White" BorderThickness="0" Padding="24,11"/>
     </Grid>
