@@ -19,6 +19,7 @@ public sealed class CaptureSession
     private readonly Func<IReadOnlyList<QrCodeResult>, QrResultWindow> createResultWindow;
     internal Func<System.Windows.Media.Imaging.BitmapSource, OcrResult, OcrResultWindow> CreateOcrResultWindow { get; set; } = (image, result) => new OcrResultWindow(image, result);
     internal Func<System.Windows.Media.Imaging.BitmapSource, CancellationToken, Task<OcrResult>> RecognizeText { get; set; } = OcrService.RecognizeAsync;
+    internal Func<System.Windows.Media.Imaging.BitmapSource, VisionResultWindow> CreateVisionResultWindow { get; set; } = image => new(image);
     public bool IsRecognizing { get; private set; }
     public string StatusMessage { get; private set; } = "";
     public bool IsFinished => finished;
@@ -166,6 +167,23 @@ public sealed class CaptureSession
             Busy = false;
             if (!finished) { Update(); owner.Activate(); }
         }
+    }
+    public void AnalyzeImage(OverlayWindow owner)
+    {
+        if (Busy || Selection.IsDragging || Selection.Selection.IsEmpty || finished) return;
+        Busy = true; StatusMessage = ""; Update();
+        try
+        {
+            if ((long)Selection.Selection.Width * Selection.Selection.Height > VisionImage.MaxPixels)
+                throw new AiException("选区超过 3200 万像素，请缩小后分析。");
+            var dialog = CreateVisionResultWindow(Snapshot.Crop(Selection.Selection));
+            dialog.Owner = owner; resultWindow = dialog;
+            dialog.ShowDialog(); resultWindow = null;
+            if (dialog.ActionCompleted && !finished) Finish();
+        }
+        catch (AiException ex) { if (!finished) StatusMessage = ex.Message; }
+        catch { if (!finished) StatusMessage = "无法打开 AI 看图，请调整选区后重试。"; }
+        finally { resultWindow = null; Busy = false; if (!finished) { Update(); owner.Activate(); } }
     }
     public async Task CopyAsync(OverlayWindow owner)
     {

@@ -118,7 +118,7 @@ internal static class AiTests
             await Failure(() => Generate());
             handler.Handle = (_, _) => Task.FromResult(Sse("data: {\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"无法回答\"}}]}\n\n" + Finish()));
             answer.Clear(); await Generate(); Check(answer.ToString() == "无法回答", "Refusal text");
-            foreach (AiTask task in Enum.GetValues<AiTask>())
+            foreach (AiTask task in Enum.GetValues<AiTask>().Where(t => t <= AiTask.Custom))
             {
                 handler.Handle = async (message, token) =>
                 {

@@ -18,6 +18,8 @@ public partial class AiAssistantPanel : UserControl
     private CancellationTokenSource? generation;
     private long version;
     private bool ready, applying, copying, stale;
+    private Func<CancellationToken, Task<VisionImage>>? getImage;
+    private static readonly AiTask[] VisualTasks = { AiTask.VisionExplain, AiTask.VisionInterface, AiTask.VisionChart, AiTask.VisionError, AiTask.Custom };
     public event Action? Completed;
     public AiAssistantPanel()
     {
@@ -38,6 +40,20 @@ public partial class AiAssistantPanel : UserControl
     internal void Configure(Func<bool, string> getSource, Func<string, CancellationToken, Task> copyText,
         IAiService? aiService = null, Func<AiSettings>? settings = null)
     { source = getSource; copy = copyText; service = aiService ?? service; loadSettings = settings ?? loadSettings; }
+    internal void ConfigureVision(Func<CancellationToken, Task<VisionImage>> image, Func<string, CancellationToken, Task> copyText,
+        IAiService? aiService = null, Func<AiSettings>? settings = null)
+    {
+        getImage = image; copy = copyText; service = aiService ?? service;
+        loadSettings = settings ?? (() => AiSettingsStore.Vision().Load().ResolveVision(new AiSettingsStore().Load));
+        ready = false;
+        ModeBox.Items.Clear();
+        foreach (string label in new[] { "读懂截图", "理解界面", "分析图表", "解释报错", "自定义提问" }) ModeBox.Items.Add(new ComboBoxItem { Content = label });
+        ModeBox.SelectedIndex = 0; ScopeBox.Visibility = Visibility.Collapsed;
+        SettingsButton.Content = "视觉模型设置";
+        PrivacyText.Text = "点击开始分析，将发送左侧选区图片与任务问题至配置的视觉模型服务。AI 回答请核对。";
+        StateText.Text = "请检查左侧图片，选择任务后开始分析。";
+        ready = true; Refresh();
+    }
     internal void SourceChanged() => Invalidate("原文已修改，回答待更新。");
     internal void SourceSelectionChanged()
     {
@@ -79,15 +95,19 @@ public partial class AiAssistantPanel : UserControl
         if (copying || lifetime.IsCancellationRequested || generation is not null) return;
         bool selected = ScopeBox.SelectedIndex == 1;
         string text = source(selected);
-        if (string.IsNullOrWhiteSpace(text)) { StateText.Text = selected ? "请先在左侧选中文字。" : "请先提供原文。"; return; }
+        if (getImage is null && string.IsNullOrWhiteSpace(text)) { StateText.Text = selected ? "请先在左侧选中文字。" : "请先提供原文。"; return; }
         if (ModeBox.SelectedIndex == 4 && string.IsNullOrWhiteSpace(QuestionText.Text)) { StateText.Text = "请输入自定义问题。"; QuestionText.Focus(); return; }
         using var current = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         generation = current; long requestVersion = ++version; bool received = false;
-        StateText.Text = selected ? "正在分析选中文字…" : "正在分析全部原文…"; Refresh();
+        StateText.Text = getImage is not null ? "正在准备图片并分析…" : selected ? "正在分析选中文字…" : "正在分析全部原文…"; Refresh();
         try
         {
-            var request = new AiRequest(text, (AiTask)ModeBox.SelectedIndex, QuestionText.Text);
+            AiTask task = getImage is null ? (AiTask)ModeBox.SelectedIndex : VisualTasks[ModeBox.SelectedIndex];
+            string question = QuestionText.Text;
             var config = loadSettings();
+            var image = getImage is null ? null : await getImage(current.Token);
+            current.Token.ThrowIfCancellationRequested();
+            var request = new AiRequest(text, task, question, image);
             var result = await service.GenerateAsync(request, config, chunk => Dispatcher.InvokeAsync(() =>
             {
                 if (current.IsCancellationRequested || version != requestVersion || lifetime.IsCancellationRequested) return;
@@ -101,7 +121,7 @@ public partial class AiAssistantPanel : UserControl
                 finally { applying = false; }
             }).Task, current.Token);
             if (current.IsCancellationRequested || version != requestVersion || lifetime.IsCancellationRequested) return;
-            StateText.Text = result.Truncated ? "回答达到模型输出上限，内容可能不完整。" : (selected ? "选中文字" : "全部原文") + " · 生成完成，可编辑和复制。";
+            StateText.Text = result.Truncated ? "回答达到模型输出上限，内容可能不完整。" : (getImage is not null ? "选区图片" : selected ? "选中文字" : "全部原文") + " · 生成完成，可编辑和复制。";
         }
         catch (OperationCanceledException) when (current.IsCancellationRequested) { }
         catch (AiException ex) { if (version == requestVersion) StateText.Text = ex.Message + (received ? " 已有部分回答已保留。" : " 已有回答已保留。"); }
@@ -110,7 +130,7 @@ public partial class AiAssistantPanel : UserControl
     }
     private void SettingsClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new AiSettingsWindow { Owner = Window.GetWindow(this) };
+        var dialog = new AiSettingsWindow(getImage is not null) { Owner = Window.GetWindow(this) };
         dialog.ShowDialog();
         if (dialog.WasSaved) Invalidate("模型设置已保存，点击生成使用新配置。");
     }
@@ -136,7 +156,7 @@ public partial class AiAssistantPanel : UserControl
     {
         if (!ready) return;
         GenerateButton.IsEnabled = !copying && generation is null && !lifetime.IsCancellationRequested;
-        GenerateButton.Content = AnswerText.Text.Length == 0 ? "生成回答" : "重新生成";
+        GenerateButton.Content = AnswerText.Text.Length == 0 ? (getImage is null ? "生成回答" : "开始分析") : "重新生成";
         StopButton.IsEnabled = generation is not null;
         SettingsButton.IsEnabled = !copying && generation is null;
         CopySelectedButton.IsEnabled = !copying && AnswerText.SelectionLength > 0;
@@ -150,5 +170,5 @@ public partial class AiAssistantPanel : UserControl
     internal void SelectAnswer(int start, int length) => AnswerText.Select(start, length);
     internal void CopyCommand() => ApplicationCommands.Copy.Execute(null, AnswerText);
     internal void SetTask(AiTask task, bool selected = false, string question = "")
-    { ModeBox.SelectedIndex = (int)task; ScopeBox.SelectedIndex = selected ? 1 : 0; QuestionText.Text = question; }
+    { ModeBox.SelectedIndex = getImage is null ? (int)task : Array.IndexOf(VisualTasks, task); ScopeBox.SelectedIndex = selected ? 1 : 0; QuestionText.Text = question; }
 }

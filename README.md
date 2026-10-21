@@ -1,6 +1,6 @@
 # Cut
 
-Windows 截图工具，使用 C# / WPF 和 Win32。默认快捷键 **Ctrl + Alt + A**；截图、二维码和文字识别全程在本地处理，可另行配置 Azure 在线中英翻译和 AI 文字助手。当前版本 **0.6.0**。
+Windows 截图工具，使用 C# / WPF 和 Win32。默认快捷键 **Ctrl + Alt + A**；截图、二维码和文字识别全程在本地处理，可另行配置 Azure 在线中英翻译、AI 文字助手和 AI 看图。当前版本 **0.7.0**。
 
 ## 运行
 
@@ -27,6 +27,7 @@ dotnet run --project .\Cut.csproj
 | Ctrl + S / 保存按钮 | 保存 PNG，成功后退出截图 |
 | Ctrl + Q / 识别二维码按钮 | 识别选区中的单个或多个二维码 |
 | Ctrl + T / 识别文字按钮 | 离线识别中英文混排文字，编辑并复制 |
+| Ctrl + I / AI 看图按钮 | 直接预览选区图片，选择任务后发送至视觉模型分析 |
 | 右键 | 清除已有选区，无选区则退出 |
 | Esc | 取消截图 |
 
@@ -89,7 +90,7 @@ dotnet run --project .\Cut.csproj
 
 ## AI 助手
 
-截图后按 **Ctrl + T** 提取文字，再切换右侧的 **AI 助手** 页签。第一版基于 OCR 文字理解，支持读懂截图文字、解释报错、总结重点、润色和自定义提问；不具备图片视觉分析、图表/布局理解或自动执行命令的功能。
+截图后按 **Ctrl + T** 提取文字，再切换右侧的 **AI 助手** 页签。此入口基于 OCR 文字理解，支持读懂截图文字、解释报错、总结重点、润色和自定义提问。要直接分析图片，请使用下面的“AI 看图”入口。
 
 1. 从主窗口点击“AI 模型设置”，或在 AI 页签点击“模型设置”。
 2. 填写兼容 Chat Completions 的**完整接口地址**（包括服务商要求的路径前缀和 `/chat/completions`）、模型 ID 和自己的 API Key。程序不附带模型账户或密钥，不自动选择模型。仅支持 Bearer Key 鉴权；不支持 Azure OpenAI 的 api-key/query-version 接口或仅支持 Responses 的接口。
@@ -106,6 +107,25 @@ dotnet run --project .\Cut.csproj
 - 模型接口按官方 [Chat Completions 请求格式](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) 和 [流式事件格式](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events) 实现。服务商需要支持相应的 system/user 消息、文本输出与 SSE 流，亦接受兼容 JSON 回答；不保证所有标为“兼容”的服务或模型均支持。
 
 本次未提供真实模型账户密钥，因此**未实测真实服务连通性、回答质量或计费**。自动测试使用模拟传输与合成文字，覆盖协议、加密存储、取消竞态及完整界面流程；配置实际服务后请先执行“测试连接”。
+
+## AI 看图
+
+在截图模式中点击工具栏的 **✦ AI 看图**，或按 **Ctrl + I**。快捷键也可直接锁定鼠标下的窗口预选框；无需先执行 OCR，没有文字的图片也能提交。OCR 结果窗口另有“用 AI 分析原图”入口。
+
+1. 在主窗口或看图窗口打开“视觉模型设置”。填写支持图片输入的模型 ID，以及兼容 Chat Completions 的完整接口地址和 API Key；也可勾选“沿用文字 AI 的服务地址和密钥”，仅单独填写视觉模型 ID。地址要求与文字 AI 相同。设置页显示继承时实际使用的地址。
+2. 点击“测试图片理解”。程序只发送本地生成的随机六位验证码图片与固定问题，不发送当前截图，也不在问题中透露验证码。正确读出验证码才显示通过；收到普通 OK 或错误数字不算通过。该测试仅验证基本图片读取能力，不代表复杂界面、图表的分析质量。测试不会自动保存，完成后点击“保存”。
+3. 框选后打开 AI 看图，左侧预览实际准备发送的图片，支持适应窗口、100% 和缩放；顶部显示原选区尺寸、发送尺寸和 PNG 体积。
+4. 选择“读懂截图 / 理解界面 / 分析图表 / 解释报错 / 自定义提问”，点击“开始分析”后才发送。右侧流式展示回答，可停止、重新生成、编辑和复制。每次分析为独立请求，不附带历史回答。
+5. “复制选中”保留窗口；“复制回答并完成”或回答框内 Ctrl + Enter 结束截图。返回按钮回到原选区（从 OCR 进入时返回 OCR 窗口）；生成期间 Esc 先停止，再按 Esc 返回。任务或问题变更会取消旧请求，迟到片段不会覆盖当前内容。
+
+- 仅发送当前选区图像与任务问题，不发送整张桌面、窗口列表或 OCR 文本。打开窗口和缩放预览均不触发网络请求，准备过程仅在内存完成，无图片临时文件。
+- 选区最多 3200 万像素。使用 PNG，普通截图保留原始像素；较大图片等比缩小，发送长边最多 4096 像素、PNG 最多 4 MiB（Base64 请求体会更大）。缩小时会提示，报错小字或密集图表可返回框选局部。服务自身限制可能更严格。
+- 使用视觉专用提示处理布局、控件、坐标轴和报错上下文，要求区分可见事实与推断，对看不清的数字或错误码说明不确定。结果只显示为可编辑文本，不执行命令、点击按钮或打开链接。
+- 视觉模型配置保存在 `%LOCALAPPDATA%\Cut\vision.json`，密钥用 DPAPI CurrentUser 加密。与文字 AI、Azure 翻译和快捷键配置独立；继承模式在每次请求时读取文字 AI 地址和密钥，保持独立的视觉模型 ID。清空视觉模型名称并保存可停用看图。
+- 模型必须同时支持图片输入和所配置的接口；纯文字模型不能用于看图。图片被拒绝时给出提示，不会静默改用 OCR 或文字分析。取消、120 秒超时、响应大小限制和不自动重试机制沿用现有 AI 服务。
+- 接口使用文字内容块和 PNG Base64 `image_url` 内容块，参见 [官方图片输入说明](https://developers.openai.com/api/docs/guides/images-vision)。第三方服务需支持相同格式，模型能力与图片计费以服务商为准。
+
+本次交付使用合成图片和模拟服务测试。用户将在软件中自行配置已有服务，**真实视觉模型连通性、界面/图表/报错理解质量及计费尚未实测**。请先运行“测试图片理解”，再用实际截图核对回答。
 
 ## 构建和验证
 
@@ -125,6 +145,8 @@ Start-Process .\bin\Release\net8.0-windows\win-x64\Cut.exe -ArgumentList '--tran
 Get-Content .\artifacts\translation-test.txt
 Start-Process .\bin\Release\net8.0-windows\win-x64\Cut.exe -ArgumentList '--ai-test' -WindowStyle Hidden -Wait
 Get-Content .\artifacts\ai-test.txt
+Start-Process .\bin\Release\net8.0-windows\win-x64\Cut.exe -ArgumentList '--vision-test' -WindowStyle Hidden -Wait
+Get-Content .\artifacts\vision-test.txt
 ```
 
 `--self-test` 验证选区几何、跨屏像素、PNG 保存和快捷键冲突处理，不修改剪贴板。`--smoke-test` 短暂显示覆盖窗口，验证本机屏幕捕获、窗口位置并生成使用纯色测试背景的界面预览；不会把真实桌面保存到磁盘。
@@ -138,6 +160,8 @@ Get-Content .\artifacts\ai-test.txt
 `--translation-test` 不访问网络、不使用真实密钥、不改动用户配置。使用模拟 HTTP 传输验证 Azure v3 协议、中英方向、Unicode/换行、仅发送文本、认证头、状态码和响应校验、超时/取消；使用真实 DPAPI 验证测试配置的加密存储。还验证原文译文编辑、选中翻译、复制命令、陈旧结果丢弃、配置窗口和连接测试流程，并保存合成界面预览。
 
 `--ai-test` 使用模拟 HTTP/SSE、合成文字和真实 DPAPI，验证五种任务、完整/选中原文、分段 UTF-8、JSON 回答、服务错误、超时取消、迟到片段丢弃、编辑复制、配置窗口和完整截图会话；不访问外网、不覆盖用户剪贴板或用户配置。生成正常与紧凑布局的合成预览。
+
+`--vision-test` 验证 PNG 像素、负坐标/跨屏裁剪、图片尺寸/体积限制、图像消息和五种任务、独立与继承配置、无自动发送、取消竞态、编辑复制、工具栏点击、Ctrl + I 的真实处理函数和完整截图流程。图片连接测试使用本地真实 OCR 读取合成验证码来模拟模型，证明问题里没有答案，普通 OK 不会误判通过；不是远程视觉模型质量测试。仅保存合成界面预览，不修改用户配置或剪贴板。
 
 发布包含运行时的便携版（发布脚本也复制本机 Visual Studio REDIST 中的 C++ 运行库）：
 
@@ -164,6 +188,7 @@ Get-Content .\artifacts\ai-test.txt
 - `IAiService` / `CompatibleAiService`：任务提示、Chat Completions 文本请求、SSE/JSON 解析、取消、超时和响应大小限制。
 - `AiAssistantPanel`：任务与范围选择、流式回答、陈旧结果防护、编辑复制。
 - `AiSettingsStore` / `AiSettingsWindow`：独立模型配置、DPAPI 密钥加密、固定输入连接测试。
+- `VisionImage` / `VisionResultWindow`：选区 PNG 编码和大小限制、图片预览缩放、独立看图窗口；复用 `AiAssistantPanel` 流式回答和编辑复制。
 - `LinkService`：仅将 HTTP/HTTPS 网页交给系统默认浏览器。
 
 ## 手工验收

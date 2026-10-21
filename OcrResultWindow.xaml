@@ -10,6 +10,7 @@
     <StackPanel Margin="0,0,0,12">
       <TextBlock Text="文字识别 · 翻译与 AI" FontSize="24" FontWeight="SemiBold" Foreground="#12243A" />
       <TextBlock x:Name="SummaryText" Margin="0,8,0,0" Foreground="#65758A" TextWrapping="Wrap" />
+      <Button Content="✦ 用 AI 分析原图" Click="OpenVisionClick" HorizontalAlignment="Left" Padding="10,5" Margin="0,8,0,0" />
     </StackPanel>
     <Expander Grid.Row="1" Header="查看原始截图" Foreground="#65758A" Margin="0,0,0,12">
       <Border Background="White" BorderBrush="#DCE4ED" BorderThickness="1" Padding="8" Margin="0,8,0,0">

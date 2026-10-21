@@ -11,7 +11,7 @@
         </ComboBox>
         <Button x:Name="SettingsButton" Content="模型设置" Click="SettingsClick" Padding="10,5"/>
       </WrapPanel>
-      <TextBlock Text="仅分析提取的文字，不上传截图。点击生成才发送；AI 回答请核对。" FontSize="12" TextWrapping="Wrap" Foreground="#65758A" Margin="0,4,0,8"/>
+      <TextBlock x:Name="PrivacyText" Text="仅分析提取的文字，不上传截图。点击生成才发送；AI 回答请核对。" FontSize="12" TextWrapping="Wrap" Foreground="#65758A" Margin="0,4,0,8"/>
     </StackPanel>
     <TextBox x:Name="QuestionText" Grid.Row="1" Visibility="Collapsed" Height="64" MaxLength="2000" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Padding="8" Margin="0,0,0,8" TextChanged="QuestionChanged" ToolTip="输入你想针对原文询问的问题，最多 2,000 字符"/>
     <Grid Grid.Row="2" Margin="0,0,0,8">

@@ -21,6 +21,7 @@
         <TextBlock Text="Enter 复制  ·  Ctrl + S 保存  ·  Esc 取消" Foreground="#65758A" FontSize="13" Margin="0,8,0,0"/>
         <TextBlock Text="Ctrl + Q 识别选区内的二维码" Foreground="#197B68" FontSize="13" Margin="0,8,0,0"/>
         <TextBlock Text="Ctrl + T 识别文字 · 支持中英文混排" Foreground="#197B68" FontSize="13" Margin="0,8,0,0"/>
+        <TextBlock Text="Ctrl + I AI 看图 · 界面、图表与报错分析" Foreground="#197B68" FontSize="13" Margin="0,8,0,0"/>
       </StackPanel>
     </Border>
     <Grid Grid.Row="2" Margin="0,20,0,0">
@@ -30,6 +31,7 @@
         <WrapPanel>
           <Button Content="翻译服务设置" Click="OpenTranslationSettings" Padding="10,5" Margin="0,8,6,0"/>
           <Button Content="AI 模型设置" Click="OpenAiSettings" Padding="10,5" Margin="0,8,0,0"/>
+          <Button Content="视觉模型设置" Click="OpenVisionSettings" Padding="10,5" Margin="6,8,0,0"/>
         </WrapPanel>
       </StackPanel>
       <Button Grid.Column="1" Content="开始截图" Click="StartCapture" Background="#197B68" Foreground="White" BorderThickness="0" Padding="24,11"/>

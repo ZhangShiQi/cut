@@ -1,0 +1,34 @@
+<Window x:Class="Cut.VisionResultWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:Cut" Title="Cut · AI 看图" Icon="Assets/Cut.ico" Width="1140" Height="760" MinWidth="820" MinHeight="560" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True" Background="#F5F7FB" FontFamily="Microsoft YaHei UI" FontSize="14">
+  <Grid Margin="24">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <TextBlock Text="AI 看图" FontSize="24" FontWeight="SemiBold" Foreground="#12243A"/>
+    <TextBlock x:Name="ImageInfo" Grid.Row="1" Text="正在准备选区图片，仅在本地处理…" Margin="0,8,0,16" Foreground="#65758A" TextWrapping="Wrap"/>
+    <ScrollViewer x:Name="ContentScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <Grid Height="{Binding ViewportHeight, ElementName=ContentScroll}" MinHeight="440">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="将发送的选区图片" Foreground="#12243A" FontWeight="SemiBold" Margin="0,0,0,10"/>
+          <Border Grid.Row="1" Background="White" BorderBrush="#DCE4ED" BorderThickness="1">
+            <ScrollViewer x:Name="ImageScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" SizeChanged="PreviewSizeChanged">
+              <Image x:Name="PreviewImage" Stretch="Fill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </ScrollViewer>
+          </Border>
+          <WrapPanel Grid.Row="2" Margin="0,8,0,0">
+            <Button Content="适应窗口" Click="FitClick" Padding="10,7"/>
+            <Button Content="100%" Click="ActualClick" Padding="10,7"/>
+            <Button Content="−" Click="ZoomOutClick" Padding="12,7"/>
+            <Button Content="＋" Click="ZoomInClick" Padding="12,7"/>
+            <TextBlock x:Name="ZoomText" VerticalAlignment="Center" Margin="8,0" Foreground="#65758A"/>
+          </WrapPanel>
+        </Grid>
+        <Border Grid.Column="2" BorderBrush="#DCE4ED" BorderThickness="1"><local:AiAssistantPanel x:Name="AiPanel"/></Border>
+      </Grid>
+    </ScrollViewer>
+    <Grid Grid.Row="3" Margin="0,12,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock Text="看不清的细节可返回重新框选；分析不会操作截图中的按钮或链接。" Foreground="#65758A" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+      <Button Grid.Column="1" Content="返回" Click="BackClick"/>
+    </Grid>
+  </Grid>
+</Window>

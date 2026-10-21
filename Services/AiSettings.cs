@@ -11,6 +11,15 @@ public sealed class AiSettings
     public string Endpoint { get; init; } = "https://api.openai.com/v1/chat/completions";
     public string Model { get; init; } = "";
     public string ApiKey { get; init; } = "";
+    public bool UseTextService { get; init; }
+    public AiSettings ResolveVision(Func<AiSettings> loadTextSettings)
+    {
+        if (!IsConfigured) throw new AiException("尚未配置视觉模型，请在“视觉模型设置”填写支持图片输入的模型名称。");
+        if (!UseTextService) { Validate(); return this; }
+        var text = loadTextSettings();
+        var resolved = new AiSettings { Endpoint = text.Endpoint, ApiKey = text.ApiKey, Model = Model };
+        resolved.Validate(); return resolved;
+    }
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Model);
     public void Validate(bool forRequest = true)
     {
@@ -30,6 +39,7 @@ public sealed class AiSettingsStore
 {
     private readonly string path;
     public AiSettingsStore() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Cut", "ai.json")) { }
+    public static AiSettingsStore Vision() => new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Cut", "vision.json"));
     internal AiSettingsStore(string path) => this.path = path;
     private sealed class Stored
     {
@@ -37,6 +47,7 @@ public sealed class AiSettingsStore
         public string Endpoint { get; set; } = "";
         public string Model { get; set; } = "";
         public string EncryptedKey { get; set; } = "";
+        public bool UseTextService { get; set; }
     }
     public AiSettings Load()
     {
@@ -52,7 +63,7 @@ public sealed class AiSettingsStore
                 try { key = Encoding.UTF8.GetString(bytes); }
                 finally { CryptographicOperations.ZeroMemory(bytes); }
             }
-            var result = new AiSettings { Endpoint = saved.Endpoint ?? "", Model = saved.Model ?? "", ApiKey = key };
+            var result = new AiSettings { Endpoint = saved.Endpoint ?? "", Model = saved.Model ?? "", ApiKey = key, UseTextService = saved.UseTextService };
             result.Validate(false); return result;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or CryptographicException or FormatException or AiException)
@@ -65,7 +76,7 @@ public sealed class AiSettingsStore
         string encrypted;
         try { encrypted = bytes.Length == 0 ? "" : Convert.ToBase64String(ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser)); }
         finally { CryptographicOperations.ZeroMemory(bytes); }
-        var saved = new Stored { Endpoint = settings.Endpoint.Trim(), Model = settings.Model.Trim(), EncryptedKey = encrypted };
+        var saved = new Stored { Endpoint = settings.Endpoint.Trim(), Model = settings.Model.Trim(), EncryptedKey = encrypted, UseTextService = settings.UseTextService };
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try { File.WriteAllText(temporary, JsonSerializer.Serialize(saved)); File.Move(temporary, path, true); }

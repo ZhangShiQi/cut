@@ -17,7 +17,8 @@ public sealed class OverlayWindow : Window
     private readonly Canvas toolsCanvas = new();
     private readonly Border toolbar;
     private readonly TextBlock statusText;
-    private readonly StackPanel buttons;
+    private readonly WrapPanel buttons;
+    internal Button AiButton { get; }
     private readonly Button cancelButton;
     public MonitorSnapshot Monitor { get; }
 
@@ -36,7 +37,7 @@ public sealed class OverlayWindow : Window
         grid.Children.Add(surface);
         grid.Children.Add(toolsCanvas);
         Content = grid;
-        buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        buttons = new WrapPanel { Orientation = Orientation.Horizontal };
         statusText = new TextBlock { Foreground = Brushes.White, FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxWidth = 380, Margin = new Thickness(8, 4, 8, 8), Visibility = Visibility.Collapsed };
         var toolbarContent = new StackPanel();
         toolbarContent.Children.Add(statusText);
@@ -44,6 +45,7 @@ public sealed class OverlayWindow : Window
         toolbar = new Border { Background = new SolidColorBrush(Color.FromRgb(25, 34, 49)), CornerRadius = new CornerRadius(8), Padding = new Thickness(5), Child = toolbarContent, Visibility = Visibility.Collapsed };
         AddButton(buttons, "识别二维码", "Ctrl + Q", async (_, _) => await session.RecognizeAsync(this));
         AddButton(buttons, "识别文字", "Ctrl + T", async (_, _) => await session.RecognizeTextAsync(this));
+        AiButton = AddButton(buttons, "✦ AI 看图", "Ctrl + I", (_, _) => session.AnalyzeImage(this));
         AddButton(buttons, "保存", "Ctrl + S", (_, _) => session.Save(this));
         cancelButton = AddButton(buttons, "取消", "Esc", (_, _) => session.Cancel());
         AddButton(buttons, "复制 ✓", "Enter / Ctrl + C", async (_, _) => await session.CopyAsync(this));
@@ -124,15 +126,20 @@ public sealed class OverlayWindow : Window
     }
     private async void OnKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape) { session.Cancel(); e.Handled = true; return; }
-        if (session.Busy || session.Interaction.IsPointerDown) return;
-        if (e.Key == Key.Enter || (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.C or Key.S or Key.Q or Key.T)) session.ConfirmPreview();
-        if (e.Key == Key.Q && Keyboard.Modifiers == ModifierKeys.Control) await session.RecognizeAsync(this);
-        else if (e.Key == Key.T && Keyboard.Modifiers == ModifierKeys.Control) await session.RecognizeTextAsync(this);
-        else if (e.Key == Key.Enter || (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)) await session.CopyAsync(this);
-        else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control) session.Save(this);
-        else return;
-        e.Handled = true;
+        e.Handled = await HandleKeyAsync(e.Key, Keyboard.Modifiers);
+    }
+    internal async System.Threading.Tasks.Task<bool> HandleKeyAsync(Key key, ModifierKeys modifiers)
+    {
+        if (key == Key.Escape) { session.Cancel(); return true; }
+        if (session.Busy || session.Interaction.IsPointerDown) return false;
+        if (key == Key.Enter || (modifiers == ModifierKeys.Control && key is Key.C or Key.S or Key.Q or Key.T or Key.I)) session.ConfirmPreview();
+        if (key == Key.Q && modifiers == ModifierKeys.Control) await session.RecognizeAsync(this);
+        else if (key == Key.T && modifiers == ModifierKeys.Control) await session.RecognizeTextAsync(this);
+        else if (key == Key.I && modifiers == ModifierKeys.Control) session.AnalyzeImage(this);
+        else if (key == Key.Enter || (key == Key.C && modifiers == ModifierKeys.Control)) await session.CopyAsync(this);
+        else if (key == Key.S && modifiers == ModifierKeys.Control) session.Save(this);
+        else return false;
+        return true;
     }
     public void Refresh(bool showToolbar)
     {
@@ -142,7 +149,8 @@ public sealed class OverlayWindow : Window
         statusText.Visibility = string.IsNullOrEmpty(session.StatusMessage) ? Visibility.Collapsed : Visibility.Visible;
         foreach (Button button in buttons.Children) button.IsEnabled = !session.Busy || (button == cancelButton && session.IsRecognizing);
         if (!showToolbar || ActualWidth <= 0 || ActualHeight <= 0) return;
-        toolbar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        toolbar.MaxWidth = Math.Max(1, ActualWidth - 16);
+        toolbar.Measure(new Size(toolbar.MaxWidth, double.PositiveInfinity));
         var part = session.Selection.Selection.Intersect(Monitor.Bounds);
         double sx = ActualWidth / Monitor.Bounds.Width, sy = ActualHeight / Monitor.Bounds.Height;
         double x = (part.Right - Monitor.Bounds.X) * sx - toolbar.DesiredSize.Width;

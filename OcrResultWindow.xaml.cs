@@ -20,6 +20,7 @@ public partial class OcrResultWindow : Window
     private long translationVersion;
     private bool busy, initialized, applyingTranslation, staleTranslation;
     public bool ActionCompleted { get; private set; }
+    internal Func<BitmapSource, VisionResultWindow> CreateVisionWindow { get; set; }
     public OcrResultWindow(BitmapSource image, OcrResult result) : this(image, result, ExportService.CopyTextAsync) { }
     internal OcrResultWindow(BitmapSource image, OcrResult result, Func<string, CancellationToken, Task> copyText,
         ITranslationService? translationService = null, Func<TranslationSettings>? loadTranslationSettings = null,
@@ -27,6 +28,7 @@ public partial class OcrResultWindow : Window
     {
         InitializeComponent();
         this.copyText = copyText;
+        CreateVisionWindow = picture => new VisionResultWindow(picture, copyText);
         this.translationService = translationService ?? new AzureTranslationService();
         this.loadTranslationSettings = loadTranslationSettings ?? new TranslationSettingsStore().Load;
         PreviewImage.Source = image;
@@ -87,6 +89,14 @@ public partial class OcrResultWindow : Window
         if (TranslationText.Text.Length > 0) { staleTranslation = true; TranslationStateText.Text = message; }
     }
     private void BackClick(object sender, RoutedEventArgs e) => Close();
+    private void OpenVisionClick(object sender, RoutedEventArgs e) => OpenVision();
+    internal void OpenVision()
+    {
+        if (busy || lifetime.IsCancellationRequested || PreviewImage.Source is not BitmapSource image) return;
+        CancelTranslation("已暂停翻译，正在查看原图。"); AiPanel.Stop();
+        var dialog = CreateVisionWindow(image); dialog.Owner = this; dialog.ShowDialog();
+        if (dialog.ActionCompleted && !lifetime.IsCancellationRequested) { ActionCompleted = true; Close(); }
+    }
     private async void CopySelectionClick(object sender, RoutedEventArgs e) => await CopyAsync(true);
     private async void CopyAllClick(object sender, RoutedEventArgs e) => await CopyAsync(false);
     private async void CopyTranslationSelectionClick(object sender, RoutedEventArgs e) => await CopyAsync(true, true);
