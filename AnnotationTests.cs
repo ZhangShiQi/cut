@@ -86,7 +86,7 @@ internal static class AnnotationTests
             var result = renderer.Render(doc);
             Check(Pixel(result, 20, 50) == Colors.Red && Pixel(result, 80, 50) == Colors.White, "Rectangle outline/hollow");
             Check(Pixel(result, 250, 20).B > 200 && Pixel(result, 250, 55) == Colors.White, "Ellipse outline/hollow");
-            Check(Pixel(result, 490, 58).G > 100 && Pixel(result, 490, 58).R < 100, "Arrow head");
+            Check(Pixel(result, 490, 56).G > 100 && Pixel(result, 490, 56).R < 100, "Arrow head");
             Check(Pixel(result, 70, 170) == Colors.Red && doc.Hit(new(150, 150), 3) == 4, "Pen stroke and dot hit");
             Check(Pixel(result, 100, 270) == Colors.Black, "Mosaic never reveals covered source");
             Check(doc.Hit(new(100, 270), 3) == 6, "Mosaic is not movable/selectable");
@@ -96,6 +96,17 @@ internal static class AnnotationTests
             doc.Tool = MarkTool.Select;
             Same(result, renderer.Render(doc), "Selection controls excluded from output");
             log.AppendLine("PASS seven tools, hollow shapes, arrowhead, pen dot, CJK multiline text, opaque cover, mosaic ordering, PNG");
+            foreach (double width in new[] { 2.0, 4.0, 8.0 })
+            {
+                var arrows = new AnnotationDocument(160, 160); arrows.Style = new(Colors.Red, width);
+                Mark(arrows, MarkTool.Arrow, new(20, 30), new(120, 30));
+                Mark(arrows, MarkTool.Arrow, new(120, 70), new(20, 70));
+                Mark(arrows, MarkTool.Arrow, new(90, 90), new(90, 140));
+                var sharp = new AnnotationRenderer(Solid(160, 160, Colors.White)).Render(arrows);
+                Check(Pixel(sharp, 121, 30) == Colors.White && Pixel(sharp, 18, 70) == Colors.White && Pixel(sharp, 90, 141) == Colors.White, "Arrow shafts never protrude beyond tip at width " + width);
+                Check(Pixel(sharp, 119, 32) == Colors.White && Pixel(sharp, 116, 30).R == 255 && Pixel(sharp, 116, 30).G < 180, "Narrow triangular tip at width " + width);
+            }
+            log.AppendLine("PASS sharp arrow tips at all three widths and both horizontal/vertical directions; no round shaft protrusion");
 
             var edit = new AnnotationDocument(400, 300);
             Mark(edit, MarkTool.Rectangle, new(20, 20), new(100, 100));

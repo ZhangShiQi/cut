@@ -59,6 +59,7 @@ public sealed partial class OverlayWindow : Window
         AddButton(buttons, "识别二维码", "Ctrl + Q", async (_, _) => await session.RecognizeAsync(this));
         AddButton(buttons, "识别文字", "Ctrl + T", async (_, _) => await session.RecognizeTextAsync(this));
         AiButton = AddButton(buttons, "✦ AI 看图", "Ctrl + I", (_, _) => session.AnalyzeImage(this));
+        AddButton(buttons, "长截图", "Ctrl + L · 手动滚动，自动拼接", (_, _) => session.StartScroll(this));
         AddButton(buttons, "保存", "Ctrl + S", (_, _) => session.Save(this));
         cancelButton = AddButton(buttons, "取消", "Esc", (_, _) => session.Cancel());
         AddButton(buttons, "复制 ✓", "Enter / Ctrl + C", async (_, _) => await session.CopyAsync(this));
@@ -170,10 +171,11 @@ public sealed partial class OverlayWindow : Window
         if (key == Key.Z && modifiers == ModifierKeys.Control) { session.UndoMark(); return true; }
         if (key == Key.Y && modifiers == ModifierKeys.Control) { session.RedoMark(); return true; }
         if (key == Key.Delete && modifiers == ModifierKeys.None) { session.Annotations?.DeleteSelected(); session.Update(); return true; }
-        if (key == Key.Enter || (modifiers == ModifierKeys.Control && key is Key.C or Key.S or Key.Q or Key.T or Key.I)) session.ConfirmPreview();
+        if (key == Key.Enter || (modifiers == ModifierKeys.Control && key is Key.C or Key.S or Key.Q or Key.T or Key.I or Key.L)) session.ConfirmPreview();
         if (key == Key.Q && modifiers == ModifierKeys.Control) await session.RecognizeAsync(this);
         else if (key == Key.T && modifiers == ModifierKeys.Control) await session.RecognizeTextAsync(this);
         else if (key == Key.I && modifiers == ModifierKeys.Control) session.AnalyzeImage(this);
+        else if (key == Key.L && modifiers == ModifierKeys.Control) session.StartScroll(this);
         else if (key == Key.Enter || (key == Key.C && modifiers == ModifierKeys.Control)) await session.CopyAsync(this);
         else if (key == Key.S && modifiers == ModifierKeys.Control) session.Save(this);
         else return false;

@@ -47,6 +47,29 @@ public sealed class DesktopSnapshot
 
 public static class CaptureService
 {
+    internal static BitmapSource CaptureRegion(PixelRect rect)
+    {
+        using var bitmap = new Bitmap(rect.Width, rect.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            var screen = NativeMethods.GetDC(IntPtr.Zero);
+            if (screen == IntPtr.Zero) throw new Win32Exception();
+            try
+            {
+                var target = graphics.GetHdc();
+                try { if (!NativeMethods.BitBlt(target, 0, 0, rect.Width, rect.Height, screen, rect.X, rect.Y, 0x40CC0020)) throw new Win32Exception(); }
+                finally { graphics.ReleaseHdc(target); }
+            }
+            finally { NativeMethods.ReleaseDC(IntPtr.Zero, screen); }
+        }
+        var data = bitmap.LockBits(new Rectangle(0, 0, rect.Width, rect.Height), ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
+        try
+        {
+            var image = BitmapSource.Create(rect.Width, rect.Height, 96, 96, PixelFormats.Bgr32, null, data.Scan0, checked(data.Stride * data.Height), data.Stride);
+            image.Freeze(); return image;
+        }
+        finally { bitmap.UnlockBits(data); }
+    }
     public static DesktopSnapshot Capture()
     {
         var snapshots = new List<MonitorSnapshot>();

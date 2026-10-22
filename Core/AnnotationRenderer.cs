@@ -49,7 +49,7 @@ internal static class AnnotationDrawing
         Vector direction = a.End - a.Start;
         if (direction.Length < .01) return Geometry.Empty;
         double size = Math.Min(direction.Length, Math.Max(12, a.Style.Width * 4)); direction.Normalize();
-        var side = new Vector(-direction.Y, direction.X) * size * .45;
+        var side = new Vector(-direction.Y, direction.X) * size * .30;
         var path = new StreamGeometry();
         using (var dc = path.Open())
         { dc.BeginFigure(a.End, true, true); dc.LineTo(a.End - direction * size + side, true, false); dc.LineTo(a.End - direction * size - side, true, false); }
@@ -79,9 +79,19 @@ internal static class AnnotationDrawing
                 Path(a).GetWidenedPathGeometry(new Pen(Brushes.Black, size) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round });
             dc.PushClip(mask); dc.DrawImage(mosaic(), new Rect(0, 0, width, height)); dc.Pop(); return;
         }
+        if (a.Tool == MarkTool.Arrow)
+        {
+            Vector direction = a.End - a.Start;
+            if (direction.Length < .01) return;
+            double headLength = Math.Min(direction.Length, Math.Max(12, a.Style.Width * 4));
+            direction.Normalize();
+            // Stop the shaft inside the head: a round cap at End would protrude past the sharp tip.
+            var shaft = Pen(a); shaft.EndLineCap = PenLineCap.Flat;
+            dc.DrawLine(shaft, a.Start, a.End - direction * headLength * .7);
+            dc.DrawGeometry(brush, null, ArrowHead(a)); return;
+        }
         if (a.Tool == MarkTool.Pen && a.Points.Length == 1) dc.DrawEllipse(brush, null, a.Start, a.Style.Width / 2, a.Style.Width / 2);
         else dc.DrawGeometry(null, Pen(a), Path(a));
-        if (a.Tool == MarkTool.Arrow) dc.DrawGeometry(brush, null, ArrowHead(a));
     }
 }
 

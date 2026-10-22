@@ -86,6 +86,29 @@ public sealed class CaptureSession
         if (Interaction.ConfirmPreview()) EndDrag(NativeMethods.CursorPosition());
     }
     public void ClearStatus() => StatusMessage = "";
+    internal Func<PixelRect, PixelRect, ScrollCaptureWindow> CreateScrollWindow { get; set; } = (area, monitor) => new(area, monitor);
+    internal Func<BitmapSource, LongImageEditor> CreateLongEditor { get; set; } = image => new(image);
+    public void StartScroll(OverlayWindow owner)
+    {
+        if (Busy || finished || Selection.IsDragging || Annotations?.IsDragging == true) return;
+        CommitText(); ConfirmPreview(); var area = Selection.Selection;
+        var monitor = Snapshot.Monitors.FirstOrDefault(m => area.Intersect(m.Bounds) == area);
+        if (area.Width < 128 || area.Height < 160 || monitor is null)
+        { StatusMessage = "长截图需在同一显示器内框选至少 128 × 160 像素的内容区。"; Update(); return; }
+        if (Annotations?.Locked == true && MessageBox.Show(owner, "长截图需要重新采集实时画面，已有标注不会带入。是否继续？", "Cut", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        Busy = true;
+        try
+        {
+            foreach (var window in windows) window.Hide();
+            var capture = CreateScrollWindow(area, monitor.Bounds); resultWindow = capture; capture.ShowDialog(); resultWindow = null;
+            if (!finished && capture.Result is BitmapSource image)
+            {
+                var editor = CreateLongEditor(image); resultWindow = editor; editor.ShowDialog(); resultWindow = null;
+            }
+        }
+        catch (Exception ex) { if (!finished) MessageBox.Show("长截图失败：" + ex.Message, "Cut", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        finally { Busy = false; Finish(); }
+    }
     public void SetTool(MarkTool tool)
     {
         if (Busy || finished) return;

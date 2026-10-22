@@ -33,6 +33,8 @@ public partial class App : Application
         if (e.Args.Contains("--ai-test")) { Shutdown(await AiTests.RunAsync()); return; }
         if (e.Args.Contains("--vision-test")) { Shutdown(await VisionTests.RunAsync()); return; }
         if (e.Args.Contains("--annotation-test")) { Shutdown(await AnnotationTests.RunAsync()); return; }
+        if (e.Args.Contains("--scroll-test")) { Shutdown(await ScrollTests.RunAsync()); return; }
+        if (e.Args.Contains("--scroll-native-test")) { Shutdown(await ScrollTests.NativeAsync()); return; }
         if (e.Args.Contains("--smoke-test")) { Shutdown(await SelfTests.SmokeAsync()); return; }
         instanceMutex = new Mutex(true, "Local\\Cut.Screenshot.SingleInstance", out bool created);
         if (!created) { MessageBox.Show("Cut 已在运行，请通过托盘图标或截图快捷键使用。", "Cut"); Shutdown(); return; }

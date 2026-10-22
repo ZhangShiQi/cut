@@ -32,6 +32,11 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll", SetLastError = true)] internal static extern IntPtr GetDC(IntPtr window);
     [DllImport("user32.dll")] internal static extern int ReleaseDC(IntPtr window, IntPtr dc);
+    [DllImport("user32.dll")] internal static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("user32.dll")] internal static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] internal static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowDisplayAffinity(IntPtr window, uint affinity);
     [DllImport("gdi32.dll", SetLastError = true)] internal static extern bool BitBlt(IntPtr destination, int x, int y, int width, int height, IntPtr source, int sourceX, int sourceY, uint operation);
     public static PixelPoint CursorPosition()
     {
