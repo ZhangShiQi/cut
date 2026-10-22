@@ -9,7 +9,7 @@ namespace Cut.Core;
 
 internal enum ScrollDirection { Down, Up }
 internal enum ScrollMatchKind { Same, Matched, Uncertain }
-internal sealed record ScrollMatch(ScrollMatchKind Kind, int Distance = 0);
+internal sealed record ScrollMatch(ScrollMatchKind Kind, int Distance = 0, string? Hint = null, bool Layered = false);
 internal sealed class ScrollFrame
 {
     public int Width { get; }
@@ -36,7 +36,7 @@ internal sealed class ScrollFrame
         Buffer.BlockCopy(Pixels, start * Width * 4, pixels, 0, pixels.Length); return new(Width, count, pixels);
     }
 }
-internal static class ScrollMatcher
+internal static partial class ScrollMatcher
 {
     // Ignore isolated cursor/animation pixels, but never infer motion from an unchanged frame.
     public static bool Stable(ScrollFrame a, ScrollFrame b)
@@ -60,11 +60,16 @@ internal static class ScrollMatcher
     }
     public static ScrollMatch Match(ScrollFrame previous, ScrollFrame current, ScrollDirection direction)
     {
+        var pixels = MatchPixels(previous, current, direction);
+        return pixels.Kind != ScrollMatchKind.Uncertain ? pixels : MatchFeatures(previous, current, direction);
+    }
+    internal static ScrollMatch MatchPixels(ScrollFrame previous, ScrollFrame current, ScrollDirection direction)
+    {
         if (previous.Width != current.Width || previous.Height != current.Height) return new(ScrollMatchKind.Uncertain);
         if (Stable(previous, current)) return new(ScrollMatchKind.Same);
         int h = current.Height, w = current.Width, band = Math.Clamp(h / 10, 24, 80);
         int maximum = h - Math.Max(80, h / 4);
-        if (maximum < 2 || w < 96) return new(ScrollMatchKind.Uncertain);
+        if (maximum < 1 || w < 96) return new(ScrollMatchKind.Uncertain);
         using var oldGray = Gray(previous); using var newGray = Gray(current);
         var votes = new Dictionary<int, HashSet<int>>();
         // Three independent horizontal strips supply candidate shifts. Search the allowed direction only.
@@ -87,7 +92,7 @@ internal static class ScrollMatcher
                 if (!double.IsFinite(score) || score < .975) break;
                 int displacement = searchTop + location.Y - top;
                 int distance = direction == ScrollDirection.Down ? displacement : -displacement;
-                if (distance >= 2 && distance <= maximum)
+                if (distance >= 1 && distance <= maximum)
                 {
                     if (!votes.TryGetValue(distance, out var supporters)) votes[distance] = supporters = new();
                     supporters.Add(strip * 2 + anchor);

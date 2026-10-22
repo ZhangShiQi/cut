@@ -21,7 +21,7 @@ internal static class ScrollTests
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool AttachThreadInput(uint current, uint foreground, bool attach);
     [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
-    private static void FocusFixture(Window window)
+    internal static void FocusFixture(Window window)
     {
         var handle = new WindowInteropHelper(window).Handle;
         uint current = GetCurrentThreadId(), foreground = NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out _);
@@ -48,14 +48,14 @@ internal static class ScrollTests
         var image = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32); image.Render(visual); image.Freeze(); return image;
     }
     private static ScrollFrame Frame(BitmapSource image, int y, int height = 500) => ScrollFrame.From(new CroppedBitmap(image, new Int32Rect(0, y, image.PixelWidth, height)));
-    private static void Same(BitmapSource actual, BitmapSource expected, string label)
+    internal static void Same(BitmapSource actual, BitmapSource expected, string label)
     {
         var a = ScrollFrame.From(actual); var b = ScrollFrame.From(expected);
         Check(a.Width == b.Width && a.Height == b.Height, label + " dimensions");
         for (int p = 0; p < a.Pixels.Length; p += 4)
             if (a.Pixels[p] != b.Pixels[p] || a.Pixels[p + 1] != b.Pixels[p + 1] || a.Pixels[p + 2] != b.Pixels[p + 2]) throw new InvalidOperationException(label + " pixel " + p / 4);
     }
-    private static void Preview(Window window, string path)
+    internal static void Preview(Window window, string path)
     {
         window.UpdateLayout(); var dpi = VisualTreeHelper.GetDpi(window);
         var image = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth * dpi.DpiScaleX), (int)Math.Ceiling(window.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
@@ -69,6 +69,8 @@ internal static class ScrollTests
         var log = new StringBuilder("Cut manual scrolling tests: synthetic pages/chat frames, no network or clipboard writes.\n");
         try
         {
+            ScrollFeatureTests.Run();
+            log.AppendLine("PASS generated translucent foreground + fixed wallpaper, exact integer shifts both ways, reverse/no-overlap and localized animation rejection");
             foreach (bool chat in new[] { false, true })
             {
                 var image = Fixture(chat: chat);
@@ -136,18 +138,18 @@ internal static class ScrollTests
             log.AppendLine("PASS blank/repeated patterns, length cap, 30,000-pixel-high annotated PNG");
 
             var fixture = Fixture(); var frame0 = Frame(fixture, 0); var frame1 = Frame(fixture, 120);
-            var capture = new ScrollCaptureWindow(new(10, 10, 640, 500), new(0, 0, 1600, 1000)) { ValidateForTest = () => true, AutomaticPolling = false };
+            var capture = new ScrollCaptureWindow(new(10, 10, 640, 500), new(0, 0, 1600, 1000)) { ValidateForTest = () => true, AutomaticPolling = false, MatchRetryMilliseconds = 0 };
             capture.Show(); await capture.ToggleAsync(); await Feed(capture, frame0);
             Check(capture.Document is not null && capture.Document.Appends == 0, "Stable first frame");
             await capture.AcceptFrameAsync(frame1); Check(capture.Document!.Appends == 0, "Intermediate moving frame not appended");
             await Feed(capture, frame1); Check(capture.Document.Appends == 1, "Stable frame appended");
             capture.Pause(); await Feed(capture, Frame(fixture, 240)); Check(capture.Document.Appends == 1, "Pause ignores new frames");
             await capture.ToggleAsync(); await Feed(capture, Frame(fixture, 240)); Check(capture.Document.Appends == 2, "Resume matches last accepted baseline");
-            capture.Undo(); Check(!capture.Running && capture.Document.Appends == 1, "Undo pauses capture");
+            await capture.UndoAsync(); Check(!capture.Running && capture.Document.Appends == 1, "Undo pauses capture");
             Preview(capture, Path.Combine(output, "scroll-capture-preview.png"));
             await capture.ToggleAsync(); await Feed(capture, Frame(fixture, 900));
             Check(!capture.Running && capture.Document.Appends == 1, "Unreliable seam auto pauses and retains result");
-            capture.Complete(); Check(capture.Result is not null, "Finish produces image");
+            await capture.CompleteAsync(); Check(capture.Result is not null, "Finish produces image");
 
             using var entered = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
             var late = new ScrollCaptureWindow(new(0, 0, 640, 500), new(0, 0, 1600, 1000))
@@ -189,7 +191,7 @@ internal static class ScrollTests
             session.CreateScrollWindow = (area, monitor) =>
             {
                 var window = new ScrollCaptureWindow(area, monitor) { ValidateForTest = () => true, AutomaticPolling = false };
-                window.Loaded += async (_, _) => { visitedCapture = true; await window.ToggleAsync(); await Feed(window, frame0); await Feed(window, frame1); window.Complete(); };
+                window.Loaded += async (_, _) => { visitedCapture = true; await window.ToggleAsync(); await Feed(window, frame0); await Feed(window, frame1); await window.CompleteAsync(); };
                 return window;
             };
             session.CreateLongEditor = image =>
@@ -263,7 +265,7 @@ internal static class ScrollTests
                 {
                     await modal.ToggleAsync(); FocusFixture(modal); await Task.Delay(100);
                     for (int i = 0; i < 3; i++) { await modal.PollAsync(); await Task.Delay(50); }
-                    Check(modal.Document is not null, "Modal native initial frame: " + modal.Message); modal.Complete();
+                    Check(modal.Document is not null, "Modal native initial frame: " + modal.Message); await modal.CompleteAsync();
                 }
                 catch (Exception ex) { modalError = ex; modal.Close(); }
             };

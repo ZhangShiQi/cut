@@ -35,6 +35,11 @@ public partial class App : Application
         if (e.Args.Contains("--annotation-test")) { Shutdown(await AnnotationTests.RunAsync()); return; }
         if (e.Args.Contains("--scroll-test")) { Shutdown(await ScrollTests.RunAsync()); return; }
         if (e.Args.Contains("--scroll-native-test")) { Shutdown(await ScrollTests.NativeAsync()); return; }
+        if (e.Args.Contains("--auto-scroll-test")) { Shutdown(await AutoScrollTests.RunAsync()); return; }
+        if (e.Args.Contains("--scroll-web-test")) { Shutdown(await ScrollWebTests.RunAsync()); return; }
+        if (e.Args.Contains("--scroll-optimization-test")) { Shutdown(await ScrollOptimizationTests.RunAsync()); return; }
+        if (e.Args.Contains("--scroll-benchmark")) { Shutdown(await ScrollOptimizationTests.BenchmarkAsync()); return; }
+        if (e.Args.Contains("--auto-scroll-native-test")) { Shutdown(await AutoScrollTests.NativeAsync()); return; }
         if (e.Args.Contains("--smoke-test")) { Shutdown(await SelfTests.SmokeAsync()); return; }
         instanceMutex = new Mutex(true, "Local\\Cut.Screenshot.SingleInstance", out bool created);
         if (!created) { MessageBox.Show("Cut 已在运行，请通过托盘图标或截图快捷键使用。", "Cut"); Shutdown(); return; }
