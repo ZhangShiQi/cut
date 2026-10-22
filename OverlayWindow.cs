@@ -10,7 +10,7 @@ using Cut.Services;
 
 namespace Cut;
 
-public sealed class OverlayWindow : Window
+public sealed partial class OverlayWindow : Window
 {
     private readonly CaptureSession session;
     private readonly SelectionSurface surface;
@@ -20,6 +20,17 @@ public sealed class OverlayWindow : Window
     private readonly WrapPanel buttons;
     internal Button AiButton { get; }
     private readonly Button cancelButton;
+    private static readonly ControlTemplate ToolbarButtonTemplate = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(@"
+        <ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'>
+          <Border x:Name='Frame' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' Padding='{TemplateBinding Padding}' CornerRadius='3'>
+            <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Frame' Property='Opacity' Value='0.8'/></Trigger>
+            <Trigger Property='IsEnabled' Value='False'><Setter TargetName='Frame' Property='Opacity' Value='0.35'/></Trigger>
+            <Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Frame' Property='BorderBrush' Value='#46D3B5'/><Setter TargetName='Frame' Property='BorderThickness' Value='1'/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>");
     public MonitorSnapshot Monitor { get; }
 
     public OverlayWindow(CaptureSession session, MonitorSnapshot monitor)
@@ -40,9 +51,11 @@ public sealed class OverlayWindow : Window
         buttons = new WrapPanel { Orientation = Orientation.Horizontal };
         statusText = new TextBlock { Foreground = Brushes.White, FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxWidth = 380, Margin = new Thickness(8, 4, 8, 8), Visibility = Visibility.Collapsed };
         var toolbarContent = new StackPanel();
+        AddToolbarGrip(toolbarContent);
         toolbarContent.Children.Add(statusText);
+        AddAnnotationToolbar(toolbarContent);
         toolbarContent.Children.Add(buttons);
-        toolbar = new Border { Background = new SolidColorBrush(Color.FromRgb(25, 34, 49)), CornerRadius = new CornerRadius(8), Padding = new Thickness(5), Child = toolbarContent, Visibility = Visibility.Collapsed };
+        toolbar = new Border { Background = new SolidColorBrush(Color.FromRgb(25, 34, 49)), CornerRadius = new CornerRadius(8), Padding = new Thickness(5), Child = new ScrollViewer { Content = toolbarContent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }, Visibility = Visibility.Collapsed };
         AddButton(buttons, "识别二维码", "Ctrl + Q", async (_, _) => await session.RecognizeAsync(this));
         AddButton(buttons, "识别文字", "Ctrl + T", async (_, _) => await session.RecognizeTextAsync(this));
         AiButton = AddButton(buttons, "✦ AI 看图", "Ctrl + I", (_, _) => session.AnalyzeImage(this));
@@ -60,6 +73,7 @@ public sealed class OverlayWindow : Window
         surface.MouseRightButtonDown += (_, e) => { surface.ReleaseMouseCapture(); session.RightClick(); e.Handled = true; };
         surface.LostMouseCapture += (_, _) =>
         {
+            if (session.Annotations?.IsDragging == true) { session.Annotations.CancelDraft(); session.Update(); }
             if (!session.Interaction.IsPointerDown) return;
             session.Interaction.LoseCapture();
             session.EndDrag(NativeMethods.CursorPosition());
@@ -69,7 +83,7 @@ public sealed class OverlayWindow : Window
             if (session.IsFinished) return;
             // Alt+F4 must cancel the whole session, including other monitors.
             e.Cancel = true;
-            Dispatcher.BeginInvoke(new Action(session.Cancel));
+            Dispatcher.BeginInvoke(new Action(session.Abort));
         };
     }
     private void PositionWindow()
@@ -80,6 +94,7 @@ public sealed class OverlayWindow : Window
     private static Button AddButton(Panel panel, string text, string hint, RoutedEventHandler handler)
     {
         var button = new Button { Content = text, ToolTip = hint, Padding = new Thickness(15, 8, 15, 8), Margin = new Thickness(3), Background = new SolidColorBrush(Color.FromRgb(42, 55, 74)), Foreground = Brushes.White, BorderThickness = new Thickness(0), Cursor = Cursors.Hand };
+        button.Template = ToolbarButtonTemplate;
         button.Click += handler;
         panel.Children.Add(button);
         return button;
@@ -90,6 +105,8 @@ public sealed class OverlayWindow : Window
         if (session.Busy) return;
         session.ClearStatus();
         var p = NativeMethods.CursorPosition();
+        if (BeginAnnotation(p, e.ClickCount)) { e.Handled = true; return; }
+        session.CommitText();
         if (e.ClickCount == 2 && session.Selection.Selection.Contains(p)) { await session.CopyAsync(this); return; }
         var dpi = VisualTreeHelper.GetDpi(surface);
         session.Interaction.Press(p, HitTolerance, (int)Math.Ceiling(SystemParameters.MinimumHorizontalDragDistance * dpi.DpiScaleX), (int)Math.Ceiling(SystemParameters.MinimumVerticalDragDistance * dpi.DpiScaleY));
@@ -101,6 +118,13 @@ public sealed class OverlayWindow : Window
     {
         if (session.Busy) return;
         var p = NativeMethods.CursorPosition();
+        if (session.AnnotationMode)
+        {
+            session.Annotations!.Move(session.AnnotationPoint(p));
+            if (session.Annotations.IsDragging) session.Update();
+            surface.Cursor = session.Annotations.Tool == MarkTool.Select ? Cursors.Arrow : session.Annotations.Tool == MarkTool.Text ? Cursors.IBeam : Cursors.Cross;
+            return;
+        }
         var previous = session.Interaction.DisplaySelection;
         bool wasPreview = session.Interaction.IsPreview;
         session.Interaction.Move(p);
@@ -117,6 +141,11 @@ public sealed class OverlayWindow : Window
     }
     private void OnMouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (session.Annotations?.IsDragging == true)
+        {
+            session.Annotations.End(session.AnnotationPoint(NativeMethods.CursorPosition()));
+            surface.ReleaseMouseCapture(); session.Update(); e.Handled = true; return;
+        }
         if (!session.Interaction.IsPointerDown) return;
         var p = NativeMethods.CursorPosition();
         session.Interaction.Release(p);
@@ -130,8 +159,17 @@ public sealed class OverlayWindow : Window
     }
     internal async System.Threading.Tasks.Task<bool> HandleKeyAsync(Key key, ModifierKeys modifiers)
     {
+        if (textEditor?.IsKeyboardFocusWithin == true)
+        {
+            if (key == Key.Escape) { CancelTextEditor(); session.Update(); return true; }
+            if (key == Key.Enter && modifiers == ModifierKeys.Control) { CommitTextEditor(); surface.Focus(); return true; }
+            return false;
+        }
         if (key == Key.Escape) { session.Cancel(); return true; }
-        if (session.Busy || session.Interaction.IsPointerDown) return false;
+        if (session.Busy || session.Interaction.IsPointerDown || session.Annotations?.IsDragging == true) return false;
+        if (key == Key.Z && modifiers == ModifierKeys.Control) { session.UndoMark(); return true; }
+        if (key == Key.Y && modifiers == ModifierKeys.Control) { session.RedoMark(); return true; }
+        if (key == Key.Delete && modifiers == ModifierKeys.None) { session.Annotations?.DeleteSelected(); session.Update(); return true; }
         if (key == Key.Enter || (modifiers == ModifierKeys.Control && key is Key.C or Key.S or Key.Q or Key.T or Key.I)) session.ConfirmPreview();
         if (key == Key.Q && modifiers == ModifierKeys.Control) await session.RecognizeAsync(this);
         else if (key == Key.T && modifiers == ModifierKeys.Control) await session.RecognizeTextAsync(this);
@@ -148,16 +186,17 @@ public sealed class OverlayWindow : Window
         statusText.Text = session.StatusMessage;
         statusText.Visibility = string.IsNullOrEmpty(session.StatusMessage) ? Visibility.Collapsed : Visibility.Visible;
         foreach (Button button in buttons.Children) button.IsEnabled = !session.Busy || (button == cancelButton && session.IsRecognizing);
+        RefreshAnnotationToolbar();
         if (!showToolbar || ActualWidth <= 0 || ActualHeight <= 0) return;
         toolbar.MaxWidth = Math.Max(1, ActualWidth - 16);
+        toolbar.MaxHeight = Math.Max(50, Math.Min(280, ActualHeight * .6));
         toolbar.Measure(new Size(toolbar.MaxWidth, double.PositiveInfinity));
         var part = session.Selection.Selection.Intersect(Monitor.Bounds);
         double sx = ActualWidth / Monitor.Bounds.Width, sy = ActualHeight / Monitor.Bounds.Height;
         double x = (part.Right - Monitor.Bounds.X) * sx - toolbar.DesiredSize.Width;
         double y = (part.Bottom - Monitor.Bounds.Y) * sy + 10;
         if (y + toolbar.DesiredSize.Height > ActualHeight - 8) y = (part.Y - Monitor.Bounds.Y) * sy - toolbar.DesiredSize.Height - 10;
-        Canvas.SetLeft(toolbar, Math.Clamp(x, 8, Math.Max(8, ActualWidth - toolbar.DesiredSize.Width - 8)));
-        Canvas.SetTop(toolbar, Math.Clamp(y, 8, Math.Max(8, ActualHeight - toolbar.DesiredSize.Height - 8)));
+        PositionToolbar(toolbarPosition ?? new Point(x, y));
     }
 }
 
@@ -189,14 +228,22 @@ internal sealed class SelectionSurface : FrameworkElement
         dc.DrawRectangle(Shade, null, new Rect(0, r.Top, r.Left, r.Height));
         dc.DrawRectangle(Shade, null, new Rect(r.Right, r.Top, Math.Max(0, w - r.Right), r.Height));
         var full = new Rect((selection.X - monitor.Bounds.X) * sx, (selection.Y - monitor.Bounds.Y) * sy, selection.Width * sx, selection.Height * sy);
+        if (session.Annotations is not null && session.AnnotationRenderer is not null)
+        {
+            dc.PushTransform(new TranslateTransform((session.AnnotationBounds.X - monitor.Bounds.X) * sx, (session.AnnotationBounds.Y - monitor.Bounds.Y) * sy));
+            dc.PushTransform(new ScaleTransform(sx, sy));
+            session.AnnotationRenderer.Draw(dc, session.Annotations, controls: true, handleSize: 6 / Math.Max(.1, sx));
+            dc.Pop(); dc.Pop();
+        }
         dc.DrawRectangle(null, new Pen(Accent, 1.5), full);
-        if (!session.Interaction.IsPreview)
+        if (!session.Interaction.IsPreview && session.Annotations?.Locked != true)
         foreach (double x in new[] { full.Left, full.Left + full.Width / 2, full.Right })
             foreach (double y in new[] { full.Top, full.Top + full.Height / 2, full.Bottom })
                 if (x != full.Left + full.Width / 2 || y != full.Top + full.Height / 2)
                     dc.DrawRectangle(Brushes.White, new Pen(Accent, 1), new Rect(x - 3, y - 3, 6, 6));
         string label = $"{selection.Width} × {selection.Height} px";
         if (session.Interaction.IsPreview) label += "  ·  单击选定，拖拽框选";
+        else if (session.Annotations?.Locked == true) label += "  ·  标注中，选区已锁定";
         DrawLabel(dc, label, Math.Max(8, r.Left), r.Top >= 35 ? r.Top - 31 : r.Top + 9, w);
     }
     private void DrawLabel(DrawingContext dc, string value, double x, double y, double width)

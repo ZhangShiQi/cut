@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Cut.Core;
 using Cut.Services;
 
@@ -26,6 +28,14 @@ public sealed class CaptureSession
     public DesktopSnapshot Snapshot { get; }
     public SelectionController Selection { get; } = new();
     public CaptureInteraction Interaction { get; }
+    public AnnotationDocument? Annotations { get; private set; }
+    internal AnnotationRenderer? AnnotationRenderer { get; private set; }
+    public PixelRect AnnotationBounds { get; private set; }
+    public bool AnnotationMode => Annotations is not null && (Annotations.Tool != MarkTool.Select || Annotations.Locked || Annotations.EditingText || Annotations.IsDragging);
+    internal Func<BitmapSource, Task> CopyImage { get; set; } = ExportService.CopyAsync;
+    internal Action<BitmapSource, string> SaveImage { get; set; } = ExportService.SavePng;
+    internal Func<OverlayWindow, string?>? ChooseSavePath { get; set; }
+    internal Func<BitmapSource, CancellationToken, Task<IReadOnlyList<QrCodeResult>>> RecognizeCodes { get; set; } = QrCodeService.RecognizeAsync;
     public bool Busy { get; private set; }
     public event Action? Completed;
     public CaptureSession(DesktopSnapshot snapshot, IReadOnlyList<WindowCandidate>? windowTargets = null) : this(snapshot, results => new QrResultWindow(results), windowTargets) { }
@@ -63,15 +73,70 @@ public sealed class CaptureSession
     public void RightClick()
     {
         if (Busy) return;
+        if (AnnotationMode)
+        {
+            foreach (var window in windows) window.CancelTextEditor();
+            Annotations!.CancelDraft(); Annotations.Tool = MarkTool.Select; Update(); return;
+        }
         if (Selection.Selection.IsEmpty) Finish();
-        else { StatusMessage = ""; Interaction.Reset(NativeMethods.CursorPosition()); Update(); }
+        else { ResetAnnotations(); StatusMessage = ""; Interaction.Reset(NativeMethods.CursorPosition()); Update(); }
     }
     public void ConfirmPreview()
     {
         if (Interaction.ConfirmPreview()) EndDrag(NativeMethods.CursorPosition());
     }
     public void ClearStatus() => StatusMessage = "";
-    public void Cancel() { if (!Busy || IsRecognizing) Finish(); }
+    public void SetTool(MarkTool tool)
+    {
+        if (Busy || finished) return;
+        CommitText(); ConfirmPreview();
+        var area = Selection.Selection;
+        if (area.IsEmpty) return;
+        if ((long)area.Width * area.Height > 32000000) { StatusMessage = "标注最多支持 3200 万像素，请缩小选区。"; Update(); return; }
+        if (Annotations is null || AnnotationBounds != area)
+        {
+            Annotations = new(area.Width, area.Height); AnnotationBounds = area;
+            AnnotationRenderer = new(Snapshot.Crop(area));
+        }
+        if (tool != MarkTool.Select) Annotations.Deselect();
+        Annotations.Tool = tool;
+        if (tool == MarkTool.Cover) Annotations.Style = Annotations.Style with { Color = Colors.Black };
+        StatusMessage = ""; Update();
+    }
+    public Point AnnotationPoint(PixelPoint p) => new(p.X - AnnotationBounds.X, p.Y - AnnotationBounds.Y);
+    public void CommitText() { foreach (var window in windows) window.CommitTextEditor(); }
+    public void ChangeMarkStyle(MarkStyle style) { CommitText(); Annotations?.ChangeStyle(style); Update(); }
+    public void UndoMark() { CommitText(); Annotations?.Undo(); Update(); }
+    public void RedoMark() { CommitText(); Annotations?.Redo(); Update(); }
+    public void Reselect(OverlayWindow owner)
+    {
+        if (Busy) return;
+        CommitText();
+        if (Annotations?.Locked == true && MessageBox.Show(owner, "重新框选会清空当前标注及撤销历史，是否继续？", "Cut", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        ResetAnnotations(); Interaction.Reset(NativeMethods.CursorPosition()); toolbarOwner = null; StatusMessage = ""; Update();
+    }
+    internal void ResetAnnotations()
+    {
+        foreach (var window in windows) window.CancelTextEditor();
+        Annotations = null; AnnotationRenderer = null; AnnotationBounds = default;
+    }
+    public BitmapSource GetOutputImage()
+    {
+        CommitText();
+        if (Annotations?.IsDragging == true) throw new InvalidOperationException("请先完成当前标注。");
+        if (Annotations is not null && Annotations.Items.Count > 0)
+        {
+            if (Selection.Selection != AnnotationBounds) throw new InvalidOperationException("标注选区已变化，请重新框选。");
+            return AnnotationRenderer!.Render(Annotations);
+        }
+        return Snapshot.Crop(Selection.Selection);
+    }
+    public void Cancel()
+    {
+        if (Annotations?.EditingText == true || Annotations?.IsDragging == true)
+        { foreach (var w in windows) w.CancelTextEditor(); Annotations?.CancelDraft(); foreach (var w in windows) w.ReleaseAnnotationCapture(); Update(); return; }
+        if (!Busy || IsRecognizing) Finish();
+    }
     public void Abort() => Finish();
     private void Finish()
     {
@@ -79,6 +144,7 @@ public sealed class CaptureSession
         finished = true;
         Interaction.LoseCapture();
         recognition?.Cancel();
+        foreach (var window in windows) window.CancelTextEditor();
         resultWindow?.Close();
         foreach (var window in windows) window.Close();
         windows.Clear();
@@ -86,7 +152,7 @@ public sealed class CaptureSession
     }
     public async Task RecognizeAsync(OverlayWindow owner)
     {
-        if (Busy || Selection.IsDragging || Selection.Selection.IsEmpty || finished) return;
+        if (Busy || Selection.IsDragging || Annotations?.IsDragging == true || Selection.Selection.IsEmpty || finished) return;
         Busy = true;
         IsRecognizing = true;
         StatusMessage = "正在识别二维码…  Esc 取消";
@@ -97,8 +163,8 @@ public sealed class CaptureSession
         {
             if ((long)Selection.Selection.Width * Selection.Selection.Height > QrCodeService.MaxPixels)
                 throw new InvalidOperationException("选区过大，请缩小到二维码所在区域后重试。");
-            var image = Snapshot.Crop(Selection.Selection);
-            var results = await QrCodeService.RecognizeAsync(image, cancellation.Token);
+            var image = GetOutputImage();
+            var results = await RecognizeCodes(image, cancellation.Token);
             if (finished || cancellation.IsCancellationRequested) return;
             IsRecognizing = false;
             if (results.Count == 0)
@@ -128,7 +194,7 @@ public sealed class CaptureSession
     }
     public async Task RecognizeTextAsync(OverlayWindow owner)
     {
-        if (Busy || Selection.IsDragging || Selection.Selection.IsEmpty || finished) return;
+        if (Busy || Selection.IsDragging || Annotations?.IsDragging == true || Selection.Selection.IsEmpty || finished) return;
         Busy = true;
         IsRecognizing = true;
         StatusMessage = "正在识别文字… 首次使用需加载模型 · Esc 取消";
@@ -139,7 +205,7 @@ public sealed class CaptureSession
         {
             if ((long)Selection.Selection.Width * Selection.Selection.Height > OcrService.MaxPixels)
                 throw new InvalidOperationException("选区过大，请缩小到文字所在区域后重试（最多 1600 万像素）。");
-            var image = Snapshot.Crop(Selection.Selection);
+            var image = GetOutputImage();
             var result = await RecognizeText(image, cancellation.Token);
             if (finished || cancellation.IsCancellationRequested) return;
             IsRecognizing = false;
@@ -170,13 +236,13 @@ public sealed class CaptureSession
     }
     public void AnalyzeImage(OverlayWindow owner)
     {
-        if (Busy || Selection.IsDragging || Selection.Selection.IsEmpty || finished) return;
+        if (Busy || Selection.IsDragging || Annotations?.IsDragging == true || Selection.Selection.IsEmpty || finished) return;
         Busy = true; StatusMessage = ""; Update();
         try
         {
             if ((long)Selection.Selection.Width * Selection.Selection.Height > VisionImage.MaxPixels)
                 throw new AiException("选区超过 3200 万像素，请缩小后分析。");
-            var dialog = CreateVisionResultWindow(Snapshot.Crop(Selection.Selection));
+            var dialog = CreateVisionResultWindow(GetOutputImage());
             dialog.Owner = owner; resultWindow = dialog;
             dialog.ShowDialog(); resultWindow = null;
             if (dialog.ActionCompleted && !finished) Finish();
@@ -187,16 +253,16 @@ public sealed class CaptureSession
     }
     public async Task CopyAsync(OverlayWindow owner)
     {
-        if (Busy || Selection.Selection.IsEmpty || finished) return;
+        if (Busy || Annotations?.IsDragging == true || Selection.Selection.IsEmpty || finished) return;
         Busy = true;
         Update();
-        try { await ExportService.CopyAsync(Snapshot.Crop(Selection.Selection)); Finish(); }
+        try { await CopyImage(GetOutputImage()); Finish(); }
         catch (Exception ex) { if (!finished) MessageBox.Show(owner, "无法复制图片，请重试。\n" + ex.Message, "Cut", MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally { Busy = false; if (!finished) Update(); }
     }
     public void Save(OverlayWindow owner)
     {
-        if (Busy || Selection.Selection.IsEmpty || finished) return;
+        if (Busy || Annotations?.IsDragging == true || Selection.Selection.IsEmpty || finished) return;
         Busy = true;
         Update();
         try
@@ -206,8 +272,9 @@ public sealed class CaptureSession
                 Title = "保存截图", Filter = "PNG 图片 (*.png)|*.png", DefaultExt = ".png", AddExtension = true,
                 FileName = "Cut_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png", OverwritePrompt = true
             };
-            if (dialog.ShowDialog(owner) != true || finished) return;
-            ExportService.SavePng(Snapshot.Crop(Selection.Selection), dialog.FileName);
+            string? path = ChooseSavePath is null ? (dialog.ShowDialog(owner) == true ? dialog.FileName : null) : ChooseSavePath(owner);
+            if (path is null || finished) return;
+            SaveImage(GetOutputImage(), path);
             Finish();
         }
         catch (Exception ex) { if (!finished) MessageBox.Show(owner, "无法保存图片，请选择其他位置重试。\n" + ex.Message, "Cut", MessageBoxButton.OK, MessageBoxImage.Warning); }
