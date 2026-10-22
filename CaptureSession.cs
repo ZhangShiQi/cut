@@ -103,7 +103,8 @@ public sealed class CaptureSession
             var capture = CreateScrollWindow(area, monitor.Bounds); resultWindow = capture; capture.ShowDialog(); resultWindow = null;
             if (!finished && capture.Result is BitmapSource image)
             {
-                var editor = CreateLongEditor(image); resultWindow = editor; editor.ShowDialog(); resultWindow = null;
+                var editor = CreateLongEditor(image); editor.SetUnreliableSeams(capture.Document?.UnreliableAppends ?? 0);
+                resultWindow = editor; editor.ShowDialog(); resultWindow = null;
             }
         }
         catch (Exception ex) { if (!finished) MessageBox.Show("长截图失败：" + ex.Message, "Cut", MessageBoxButton.OK, MessageBoxImage.Warning); }

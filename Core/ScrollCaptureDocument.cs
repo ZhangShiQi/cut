@@ -12,7 +12,7 @@ namespace Cut.Core;
 internal sealed class ScrollCaptureDocument : IDisposable
 {
     internal const long DefaultCacheLimit = 1024L * 1024 * 1024;
-    private sealed record Entry(long Offset, int Distance);
+    private sealed record Entry(long Offset, int Distance, bool Unreliable = false);
     private readonly List<Entry> entries = new();
     private readonly FileStream cache;
     private readonly long cacheLimit;
@@ -24,6 +24,7 @@ internal sealed class ScrollCaptureDocument : IDisposable
     public int Width => Last.Width;
     public int Height { get; private set; }
     public int Appends => entries.Count - 1;
+    internal int UnreliableAppends { get; private set; }
     internal string CachePath { get; }
     internal long CachedBytes { get { lock (sync) return cache.Length; } }
 
@@ -52,12 +53,14 @@ internal sealed class ScrollCaptureDocument : IDisposable
     }
     internal bool CanAppend(int distance) => Height + distance <= ScrollAssembler.MaxHeight &&
         (long)Width * (Height + distance) <= ScrollAssembler.MaxPixels && Appends < 1000;
-    internal bool Commit(ScrollFrame frame, int distance, long offset)
+    internal bool Commit(ScrollFrame frame, int distance, long offset, bool unreliable = false)
     {
         if (frame.Width != Width || frame.Height != Last.Height || distance <= 0 || distance >= frame.Height)
             throw new ArgumentException("Invalid scroll frame");
         if (!CanAppend(distance)) return false;
-        entries.Add(new(offset, distance)); Height += distance; Last = frame; thumbnail = Preview(frame); return true;
+        entries.Add(new(offset, distance, unreliable));
+        if (unreliable) UnreliableAppends++;
+        Height += distance; Last = frame; thumbnail = Preview(frame); return true;
     }
     internal bool Undo()
     {
@@ -65,6 +68,7 @@ internal sealed class ScrollCaptureDocument : IDisposable
         {
             if (Appends == 0) return false;
             var removed = entries[^1]; entries.RemoveAt(entries.Count - 1); Height -= removed.Distance;
+            if (removed.Unreliable) UnreliableAppends--;
             Last = Read(entries[^1]); thumbnail = Preview(Last);
             cache.SetLength(entries[^1].Offset + Last.Pixels.Length); return true;
         }

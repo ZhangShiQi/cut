@@ -38,6 +38,7 @@ public partial class App : Application
         if (e.Args.Contains("--auto-scroll-test")) { Shutdown(await AutoScrollTests.RunAsync()); return; }
         if (e.Args.Contains("--scroll-web-test")) { Shutdown(await ScrollWebTests.RunAsync()); return; }
         if (e.Args.Contains("--scroll-optimization-test")) { Shutdown(await ScrollOptimizationTests.RunAsync()); return; }
+        if (e.Args.Contains("--scroll-permissive-test")) { Shutdown(await ScrollPermissiveTests.RunAsync()); return; }
         if (e.Args.Contains("--scroll-benchmark")) { Shutdown(await ScrollOptimizationTests.BenchmarkAsync()); return; }
         if (e.Args.Contains("--auto-scroll-native-test")) { Shutdown(await AutoScrollTests.NativeAsync()); return; }
         if (e.Args.Contains("--smoke-test")) { Shutdown(await SelfTests.SmokeAsync()); return; }

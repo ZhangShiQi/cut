@@ -5,7 +5,7 @@ namespace Cut.Core;
 internal sealed class ScrollMatchingSession
 {
     private bool layered;
-    internal ScrollMatch Match(ScrollFrame previous, ScrollFrame current, ScrollDirection direction)
+    internal ScrollMatch Match(ScrollFrame previous, ScrollFrame current, ScrollDirection direction, bool allowUnreliable = false)
     {
         if (ScrollMatcher.Stable(previous, current)) return new(ScrollMatchKind.Same);
         ScrollMatch result;
@@ -16,6 +16,8 @@ internal sealed class ScrollMatchingSession
         }
         else result = ScrollMatcher.Match(previous, current, direction);
         if (result.Kind == ScrollMatchKind.Matched) layered = result.Layered;
+        if (result.Kind == ScrollMatchKind.Uncertain && allowUnreliable)
+            result = ScrollMatcher.MatchFeatures(previous, current, direction, allowUnreliable: true);
         return result;
     }
 }

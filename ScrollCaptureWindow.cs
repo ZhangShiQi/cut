@@ -23,6 +23,10 @@ internal sealed partial class ScrollCaptureWindow : Window
     private readonly TextBox top = new() { Text = "0", Width = 50, Margin = new Thickness(4) }, bottom = new() { Text = "0", Width = 50, Margin = new Thickness(4) };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(8), Foreground = Brushes.DarkSlateGray };
     private readonly TextBlock dimensions = new() { Margin = new Thickness(8), FontWeight = FontWeights.SemiBold };
+    private readonly CheckBox allowUnreliable = new() { Content = "允许低置信度拼接（实验性）", Margin = new Thickness(4),
+        ToolTip = "仅在能估计滚动位移时放宽校验；可能错位、重复或丢失内容。暂停后可切换，仅本次截图有效。" };
+    private readonly TextBlock unreliableNotice = new() { Margin = new Thickness(8, 0, 8, 0), TextWrapping = TextWrapping.Wrap,
+        Foreground = Brushes.Firebrick, Visibility = Visibility.Collapsed };
     private readonly TextBlock layerNotice = new() { Margin = new Thickness(8, 0, 8, 0), TextWrapping = TextWrapping.Wrap, Foreground = Brushes.DarkGoldenrod, Visibility = Visibility.Collapsed,
         Text = "页面含固定背景，拼接后背景可能出现接缝；完成后请检查预览。" };
     private readonly Image preview = new() { Height = 130, Stretch = Stretch.Uniform, Margin = new Thickness(8) };
@@ -49,6 +53,7 @@ internal sealed partial class ScrollCaptureWindow : Window
     internal bool AutomaticPolling { get; set; } = true;
     internal Func<ScrollFrame, ScrollFrame, ScrollDirection, ScrollMatch>? MatchForTest { get; set; }
     internal int MatchRetryMilliseconds { get; set; } = 1500;
+    internal bool AllowUnreliable { get => allowUnreliable.IsChecked == true; set => allowUnreliable.IsChecked = value; }
     internal ScrollDirection Direction { get => direction.SelectedIndex == 1 ? ScrollDirection.Up : ScrollDirection.Down; set => direction.SelectedIndex = value == ScrollDirection.Up ? 1 : 0; }
 
     public ScrollCaptureWindow(PixelRect area, PixelRect monitor)
@@ -63,6 +68,9 @@ internal sealed partial class ScrollCaptureWindow : Window
         var options = new WrapPanel(); options.Children.Add(direction);
         root.Children.Add(options);
         AddAutoControls(root);
+        root.Children.Add(allowUnreliable);
+        allowUnreliable.Checked += (_, _) => UpdateUnreliableNotice();
+        allowUnreliable.Unchecked += (_, _) => UpdateUnreliableNotice();
         var trims = new WrapPanel();
         trims.Children.Add(new TextBlock { Text = "排除顶部 / 底部（像素）", VerticalAlignment = VerticalAlignment.Center });
         trims.Children.Add(top); trims.Children.Add(bottom); root.Children.Add(trims);
@@ -77,7 +85,7 @@ internal sealed partial class ScrollCaptureWindow : Window
         undo = Add(actions, "撤销拼接", async () => await UndoAsync());
         finish = Add(actions, "完成", async () => await CompleteAsync());
         Add(actions, "取消", Close); root.Children.Add(actions);
-        root.Children.Add(dimensions); root.Children.Add(status); root.Children.Add(layerNotice);
+        root.Children.Add(dimensions); root.Children.Add(status); root.Children.Add(unreliableNotice); root.Children.Add(layerNotice);
         root.Children.Add(new TextBlock { Text = "最近采集原图 · 完成后生成长图", Margin = new Thickness(8, 4, 8, 0), Foreground = Brushes.DimGray });
         root.Children.Add(preview);
         Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -248,10 +256,19 @@ internal sealed partial class ScrollCaptureWindow : Window
     {
         start.Content = Running ? "暂停" : Document is null ? "开始" : "继续";
         start.IsEnabled = !finishing;
+        allowUnreliable.IsEnabled = !Running && !finishing;
         direction.IsEnabled = top.IsEnabled = bottom.IsEnabled = Document is null && !Running;
         captureMode.IsEnabled = !Running && !finishing; speed.IsEnabled = !Running && !finishing && AutoScroll;
         undo.IsEnabled = !finishing && Document?.Appends > 0; finish.IsEnabled = !finishing && Document is not null;
         dimensions.Text = Document is null ? $"选区 {contentArea.Width} × {contentArea.Height}" : $"预计 {Document.Width} × {Document.Height} px · 已缓存 {Document.Appends + 1} 张原图";
+        UpdateUnreliableNotice();
+    }
+    private void UpdateUnreliableNotice()
+    {
+        int count = Document?.UnreliableAppends ?? 0;
+        unreliableNotice.Visibility = AllowUnreliable || count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        unreliableNotice.Text = count > 0 ? $"已有 {count} 处低置信度拼接，可能错位、重复或缺失；请检查结果，可撤销拼接。"
+            : "已允许低置信度拼接，可能错位、重复或缺失；完全无法估计位移时仍会暂停。";
     }
     internal async Task PollAsync()
     {
@@ -291,7 +308,8 @@ internal sealed partial class ScrollCaptureWindow : Window
             Document = document; preview.Source = Document.Thumbnail(); status.Text = "首帧原图已缓存。"; UpdateControls(); await AutoStableAsync(0, ticket); return;
         }
         var baseline = Document.Last; var mode = Document.Direction;
-        var match = await Task.Run(() => (MatchForTest ?? matcher.Match)(baseline, next, mode));
+        bool permissive = AllowUnreliable;
+        var match = await Task.Run(() => MatchForTest is null ? matcher.Match(baseline, next, mode, permissive) : MatchForTest(baseline, next, mode));
         if (closed || ticket != generation) return;
         if (match.Kind == ScrollMatchKind.Uncertain)
         {
@@ -305,7 +323,7 @@ internal sealed partial class ScrollCaptureWindow : Window
         if (!Document.CanAppend(match.Distance)) { Pause("已达到长图上限（30,000 像素高 / 3,200 万像素 / 1,000 次拼接）。请完成并分段截图。"); return; }
         long cached = await Task.Run(() => Document.Cache(next));
         if (closed || ticket != generation) return;
-        Document.Commit(next, match.Distance, cached);
+        Document.Commit(next, match.Distance, cached, match.Unreliable);
         if (match.Layered) layerNotice.Visibility = Visibility.Visible;
         preview.Source = Document.Thumbnail(); status.Text = $"原图已缓存，确认新增 {match.Distance} 像素；完成后统一合成。"; UpdateControls();
         await AutoStableAsync(match.Distance, ticket);

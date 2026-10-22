@@ -9,7 +9,7 @@ namespace Cut.Core;
 
 internal enum ScrollDirection { Down, Up }
 internal enum ScrollMatchKind { Same, Matched, Uncertain }
-internal sealed record ScrollMatch(ScrollMatchKind Kind, int Distance = 0, string? Hint = null, bool Layered = false);
+internal sealed record ScrollMatch(ScrollMatchKind Kind, int Distance = 0, string? Hint = null, bool Layered = false, bool Unreliable = false);
 internal sealed class ScrollFrame
 {
     public int Width { get; }

@@ -22,6 +22,12 @@ internal sealed class LongImageEditor : Window
     private readonly ScrollViewer scroll = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     private readonly WrapPanel toolbar = new();
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(10), Foreground = Brushes.DarkSlateGray };
+    private readonly TextBlock captureWarning = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(10, 4, 10, 4), Foreground = Brushes.Firebrick, Visibility = Visibility.Collapsed };
+    internal void SetUnreliableSeams(int count)
+    {
+        captureWarning.Text = $"此图含 {count} 处低置信度拼接，可能错位、重复或缺失；保存或复制前请检查接缝。";
+        captureWarning.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? recognition;
     private TextBox? text;
@@ -47,6 +53,7 @@ internal sealed class LongImageEditor : Window
         var root = new DockPanel();
         var bar = new ScrollViewer { Content = toolbar, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 160, Background = Brushes.White };
         DockPanel.SetDock(bar, Dock.Top); root.Children.Add(bar);
+        DockPanel.SetDock(captureWarning, Dock.Top); root.Children.Add(captureWarning);
         DockPanel.SetDock(status, Dock.Bottom); root.Children.Add(status);
         surface = new EditorSurface(this) { Width = image.PixelWidth, Height = image.PixelHeight, Focusable = true };
         canvas.Width = image.PixelWidth; canvas.Height = image.PixelHeight; canvas.Children.Add(surface);

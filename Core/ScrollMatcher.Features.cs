@@ -10,7 +10,7 @@ internal static partial class ScrollMatcher
     // A translucent page over a fixed wallpaper has two different motions. Whole-overlap
     // pixel equality cannot describe it. Use unique, mutually matched foreground features
     // only as a fallback, still rejecting ambiguous shifts and unexplained large changes.
-    internal static ScrollMatch MatchFeatures(ScrollFrame previous, ScrollFrame current, ScrollDirection direction, Action<string>? trace = null, int featureCount = 2400)
+    internal static ScrollMatch MatchFeatures(ScrollFrame previous, ScrollFrame current, ScrollDirection direction, Action<string>? trace = null, int featureCount = 2400, bool allowUnreliable = false)
     {
         if (previous.Width != current.Width || previous.Height != current.Height || current.Width < 96 || current.Height < 120)
             return new(ScrollMatchKind.Uncertain);
@@ -49,15 +49,20 @@ internal static partial class ScrollMatcher
         int distance = (int)Math.Round(winner.Average(p => p.Distance));
         int runnerUp = groups.Where(g => Math.Abs(g.Key - center) > 2)
             .Select(g => motions.Count(p => Math.Abs(p.Distance - center) > 2 && Math.Abs(p.Distance - g.Key) <= 1)).DefaultIfEmpty().Max();
-        if (distance < 1 || distance > maximum || winner.Length < 16 || winner.Length < motions.Count * .65 ||
-            winner.Length < runnerUp * 3 || winner.Length < stationaryForeground) return new(ScrollMatchKind.Uncertain);
+        // Even the opt-in mode needs a plausible, distributed forward movement.
+        // Never invent a distance from the last wheel input or a blank frame.
+        if (distance < 1 || distance > maximum || winner.Length < 8 || winner.Length < motions.Count * .5 ||
+            winner.Length < runnerUp * 1.5 || winner.Length < stationaryForeground) return new(ScrollMatchKind.Uncertain);
+        bool weakMotion = winner.Length < 16 || winner.Length < motions.Count * .65 || winner.Length < runnerUp * 3;
+        if (weakMotion && !allowUnreliable) return new(ScrollMatchKind.Uncertain);
         var cells = winner.Select(p => (X: p.X * 4 / w, Y: p.Y * 4 / h)).Distinct().ToArray();
         trace?.Invoke($"cells={cells.Length}, x={cells.Select(c => c.X).Distinct().Count()}, y={cells.Select(c => c.Y).Distinct().Count()}");
         if (cells.Length < 4 || cells.Select(c => c.X).Distinct().Count() < 2 || cells.Select(c => c.Y).Distinct().Count() < 2)
             return new(ScrollMatchKind.Uncertain);
         if (winner.Max(p => p.Y) - winner.Min(p => p.Y) < (h - distance) * .4 ||
             winner.Max(p => p.X) - winner.Min(p => p.X) < w * .25) return new(ScrollMatchKind.Uncertain);
-        if (HasFixedEdge(previous, current, true) || HasFixedEdge(previous, current, false))
+        bool fixedEdge = HasFixedEdge(previous, current, true) || HasFixedEdge(previous, current, false);
+        if (fixedEdge && !allowUnreliable)
             return new(ScrollMatchKind.Uncertain, Hint: "选区顶部或底部包含固定栏，请用“排除顶部 / 底部”去掉固定栏后重新采集");
         int overlap = h - distance, oldY = direction == ScrollDirection.Down ? distance : 0, newY = direction == ScrollDirection.Down ? 0 : distance;
         long unexplained = 0, samples = 0; var backgroundCells = new HashSet<(int, int)>();
@@ -73,8 +78,12 @@ internal static partial class ScrollMatcher
             samples++;
         }
         trace?.Invoke($"unexplained={(double)unexplained / samples:P2}; backgroundCells={backgroundCells.Count}");
-        if (unexplained > samples * .025) return new(ScrollMatchKind.Uncertain, Hint: "部分内容仍在加载或发生变化，请等待页面稳定后继续");
-        return new(ScrollMatchKind.Matched, distance, Layered: backgroundCells.Count >= 6);
+        bool changed = unexplained > samples * .025;
+        if (changed && !allowUnreliable) return new(ScrollMatchKind.Uncertain, Hint: "部分内容仍在加载或发生变化，请等待页面稳定后继续");
+        bool unreliable = weakMotion || fixedEdge || changed;
+        return new(ScrollMatchKind.Matched, distance,
+            Hint: unreliable ? "已按估计位移拼接，可能存在错位、重复或缺失，请检查结果" : null,
+            Layered: backgroundCells.Count >= 6, Unreliable: unreliable);
     }
 
     private static int ColorError(byte[] a, int p, byte[] b, int q) =>
