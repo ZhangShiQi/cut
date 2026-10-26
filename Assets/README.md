@@ -1,5 +1,7 @@
 # Cut icon
 
+`Toolbar/` contains the original toolbar SVG artwork (24 x 24 viewBox, 1.8-unit strokes). Shapes are authored as SVG paths and embedded as WPF resources. `Services/ToolbarIcons.cs` reads this limited path-only SVG format into frozen WPF vector drawings; rendering remains vector-based at all DPI scales. Buttons use 36 x 36 DIP targets and 20 x 20 DIP drawings, retain text tooltips and automation names, and share the same artwork across screenshot and long-image editors. No SVG rendering package or raster conversion is required. Keep new icons within this supported SVG subset.
+
 The canonical artwork is SVG, drawn as simple geometric paths. No generated bitmap is used.
 
 - `cut.svg`: application mark, a teal tile, white selection corners and mint captured region.

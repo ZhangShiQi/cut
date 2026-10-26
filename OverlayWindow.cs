@@ -68,6 +68,11 @@ public sealed partial class OverlayWindow : Window
         Loaded += (_, _) => { PositionWindow(); surface.Focus(); Refresh(false); };
         SizeChanged += (_, _) => Refresh(toolbar.Visibility == Visibility.Visible);
         PreviewKeyDown += OnKeyDown;
+        PreviewMouseRightButtonDown += (_, e) =>
+        {
+            if (!session.AnnotationMode) return;
+            session.RightClick(); surface.Focus(); e.Handled = true;
+        };
         surface.MouseLeftButtonDown += OnMouseDown;
         surface.MouseMove += OnMouseMove;
         surface.MouseLeftButtonUp += OnMouseUp;
@@ -95,6 +100,7 @@ public sealed partial class OverlayWindow : Window
     private static Button AddButton(Panel panel, string text, string hint, RoutedEventHandler handler)
     {
         var button = new Button { Content = text, ToolTip = hint, Padding = new Thickness(15, 8, 15, 8), Margin = new Thickness(3), Background = new SolidColorBrush(Color.FromRgb(42, 55, 74)), Foreground = Brushes.White, BorderThickness = new Thickness(0), Cursor = Cursors.Hand };
+        ToolbarIcons.Apply(button, text, Colors.White, hint);
         button.Template = ToolbarButtonTemplate;
         button.Click += handler;
         panel.Children.Add(button);
@@ -103,17 +109,23 @@ public sealed partial class OverlayWindow : Window
     private int HitTolerance => Math.Max(5, (int)Math.Round(6 * Monitor.Bounds.Width / Math.Max(1, surface.ActualWidth)));
     private async void OnMouseDown(object sender, MouseButtonEventArgs e)
     {
+        await HandlePointerDownAsync(NativeMethods.CursorPosition(), e.ClickCount);
+        e.Handled = true;
+    }
+    internal async System.Threading.Tasks.Task HandlePointerDownAsync(PixelPoint p, int clicks)
+    {
         if (session.Busy) return;
         session.ClearStatus();
-        var p = NativeMethods.CursorPosition();
-        if (BeginAnnotation(p, e.ClickCount)) { e.Handled = true; return; }
+        if (BeginAnnotation(p, clicks)) return;
         session.CommitText();
-        if (e.ClickCount == 2 && session.Selection.Selection.Contains(p)) { await session.CopyAsync(this); return; }
+        if (clicks == 2 && session.Selection.Selection.Contains(p)) { await session.CopyAsync(this); return; }
+        // Existing marks use selection-local coordinates. Exiting drawing restores
+        // double-click copy without allowing a normal drag to misalign those marks.
+        if (session.Annotations?.Locked == true) return;
         var dpi = VisualTreeHelper.GetDpi(surface);
         session.Interaction.Press(p, HitTolerance, (int)Math.Ceiling(SystemParameters.MinimumHorizontalDragDistance * dpi.DpiScaleX), (int)Math.Ceiling(SystemParameters.MinimumVerticalDragDistance * dpi.DpiScaleY));
         surface.CaptureMouse();
         session.Update();
-        e.Handled = true;
     }
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
@@ -126,6 +138,7 @@ public sealed partial class OverlayWindow : Window
             surface.Cursor = session.Annotations.Tool == MarkTool.Select ? Cursors.Arrow : session.Annotations.Tool == MarkTool.Text ? Cursors.IBeam : Cursors.Cross;
             return;
         }
+        if (session.Annotations?.Locked == true) { surface.Cursor = Cursors.Arrow; return; }
         var previous = session.Interaction.DisplaySelection;
         bool wasPreview = session.Interaction.IsPreview;
         session.Interaction.Move(p);
@@ -245,7 +258,7 @@ internal sealed class SelectionSurface : FrameworkElement
                     dc.DrawRectangle(Brushes.White, new Pen(Accent, 1), new Rect(x - 3, y - 3, 6, 6));
         string label = $"{selection.Width} × {selection.Height} px";
         if (session.Interaction.IsPreview) label += "  ·  单击选定，拖拽框选";
-        else if (session.Annotations?.Locked == true) label += "  ·  标注中，选区已锁定";
+        else if (session.Annotations?.Locked == true) label += session.AnnotationMode ? "  ·  标注中，选区已锁定" : "  ·  双击复制，选区已锁定";
         DrawLabel(dc, label, Math.Max(8, r.Left), r.Top >= 35 ? r.Top - 31 : r.Top + 9, w);
     }
     private void DrawLabel(DrawingContext dc, string value, double x, double y, double width)

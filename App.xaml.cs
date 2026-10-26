@@ -25,6 +25,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Contains("--startup-test")) { Shutdown(await StartupTests.RunAsync(this)); return; }
         if (e.Args.Contains("--self-test")) { Shutdown(SelfTests.Run()); return; }
         if (e.Args.Contains("--qr-test")) { Shutdown(await QrTests.RunAsync()); return; }
         if (e.Args.Contains("--window-test")) { Shutdown(await WindowSelectionTests.RunAsync()); return; }
@@ -42,8 +43,14 @@ public partial class App : Application
         if (e.Args.Contains("--scroll-benchmark")) { Shutdown(await ScrollOptimizationTests.BenchmarkAsync()); return; }
         if (e.Args.Contains("--auto-scroll-native-test")) { Shutdown(await AutoScrollTests.NativeAsync()); return; }
         if (e.Args.Contains("--smoke-test")) { Shutdown(await SelfTests.SmokeAsync()); return; }
-        instanceMutex = new Mutex(true, "Local\\Cut.Screenshot.SingleInstance", out bool created);
-        if (!created) { MessageBox.Show("Cut 已在运行，请通过托盘图标或截图快捷键使用。", "Cut"); Shutdown(); return; }
+        bool autoStart = IsAutoStart(e.Args);
+        bool startupSmoke = e.Args.Contains("--startup-smoke-test");
+        instanceMutex = new Mutex(true, startupSmoke ? "Local\\Cut.Screenshot.StartupSmokeTest" : "Local\\Cut.Screenshot.SingleInstance", out bool created);
+        if (!created)
+        {
+            if (!autoStart) MessageBox.Show("Cut 已在运行，请通过托盘图标或截图快捷键使用。", "Cut");
+            Shutdown(); return;
+        }
         settings = HotkeySettings.Load();
         hotkey = new HotkeyService();
         hotkey.Pressed += async () => await StartCaptureAsync();
@@ -59,8 +66,19 @@ public partial class App : Application
         tray.DoubleClick += (_, _) => ShowSettings();
         ChangeHotkey(settings, persist: false);
         SystemEvents.DisplaySettingsChanged += DisplaySettingsChanged;
-        settingsWindow.Show();
+        if (!autoStart) settingsWindow.Show();
+        if (startupSmoke)
+        {
+            await Task.Delay(300);
+            bool passed = autoStart && tray.Visible && !settingsWindow.IsVisible;
+            System.IO.Directory.CreateDirectory("artifacts");
+            System.IO.File.WriteAllText("artifacts/startup-smoke-test.txt", passed
+                ? "PASS actual --autostart initialization: tray visible, settings hidden, startup entry not modified; no reboot performed.\n"
+                : "FAIL actual automatic startup initialization\n");
+            IsExiting = true; Shutdown(passed ? 0 : 1);
+        }
     }
+    internal static bool IsAutoStart(string[] args) => args.Any(arg => string.Equals(arg, "--autostart", StringComparison.OrdinalIgnoreCase));
     public void ChangeHotkey(HotkeySettings requested, bool persist = true)
     {
         if (hotkeyRegistered && requested == settings) { settingsWindow?.SetStatus("当前快捷键：" + settings); return; }

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Cut.Core;
+using Cut.Services;
 
 namespace Cut;
 
@@ -19,7 +20,11 @@ public sealed partial class OverlayWindow
     private TextBox? textEditor;
     internal TextBox? ActiveTextEditor => textEditor;
     private Point? toolbarPosition;
-    internal void ReleaseAnnotationCapture() => surface.ReleaseMouseCapture();
+    internal void ReleaseAnnotationCapture()
+    {
+        surface.ReleaseMouseCapture();
+        if (!session.AnnotationMode) surface.Cursor = Cursors.Arrow;
+    }
     private void PositionToolbar(Point position)
     {
         Canvas.SetLeft(toolbar, Math.Clamp(position.X, 8, Math.Max(8, ActualWidth - toolbar.DesiredSize.Width - 8)));
@@ -27,7 +32,7 @@ public sealed partial class OverlayWindow
     }
     private void AddToolbarGrip(StackPanel content)
     {
-        var grip = new TextBlock { Text = "⠿  拖动工具栏", Foreground = Brushes.LightGray, FontSize = 11, Padding = new Thickness(8, 3, 8, 3), Cursor = Cursors.SizeAll, Background = Brushes.Transparent };
+        var grip = new Border { Child = ToolbarIcons.Create("拖动工具栏", Colors.LightGray, 16), Padding = new Thickness(8, 3, 8, 3), Cursor = Cursors.SizeAll, Background = Brushes.Transparent, ToolTip = "拖动工具栏" };
         Point anchor = default, origin = default;
         grip.MouseLeftButtonDown += (_, e) =>
         {
@@ -53,14 +58,14 @@ public sealed partial class OverlayWindow
             string hint = tool switch { MarkTool.Select => "选择、移动和调整标注；双击文字可编辑", MarkTool.Text => "点击输入文字；Enter 换行，Ctrl + Enter 完成，Esc 取消", MarkTool.Mosaic => "拖动涂抹；可撤销重做，不能单独选择移动", MarkTool.Cover => "实色覆盖；适合遮挡敏感内容", _ => labels[(int)tool] };
             markButtons[tool] = AddButton(tools, labels[(int)tool], hint,
                 (_, _) => { session.SetTool(choice); surface.Focus(); });
-            markButtons[tool].Padding = new Thickness(10, 6, 10, 6);
         }
         content.Children.Add(tools);
         var styles = new WrapPanel { Margin = new Thickness(3, 2, 3, 2) };
         foreach (var color in new[] { Colors.Red, Colors.Gold, Colors.LimeGreen, Colors.DodgerBlue, Colors.Black, Colors.White })
         {
             var selected = color;
-            var button = new Button { Width = 24, Height = 24, Margin = new Thickness(3), Padding = new Thickness(0), Background = new SolidColorBrush(color), BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1), ToolTip = "标注颜色" };
+            var button = new Button { Background = new SolidColorBrush(Color.FromRgb(42, 55, 74)), BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1) };
+            ToolbarIcons.Apply(button, "标注颜色", color, color.ToString());
             button.Template = ToolbarButtonTemplate;
             button.Click += (_, _) =>
             {
@@ -102,7 +107,7 @@ public sealed partial class OverlayWindow
         var doc = session.Annotations; var style = doc?.Style ?? new MarkStyle(Colors.Red);
         bool enabled = !session.Busy && doc?.IsDragging != true;
         foreach (var entry in markButtons)
-        { entry.Value.IsEnabled = enabled; entry.Value.Background = new SolidColorBrush(entry.Key == (doc?.Tool ?? MarkTool.Select) ? Color.FromRgb(25, 123, 104) : Color.FromRgb(42, 55, 74)); }
+        { entry.Value.IsEnabled = enabled; entry.Value.Background = new SolidColorBrush(session.AnnotationMode && entry.Key == doc?.Tool ? Color.FromRgb(25, 123, 104) : Color.FromRgb(42, 55, 74)); }
         foreach (var entry in colorButtons)
         { entry.Value.IsEnabled = enabled && doc?.Tool != MarkTool.Mosaic; entry.Value.BorderThickness = new Thickness(entry.Key == style.Color ? 3 : 1); entry.Value.BorderBrush = entry.Key == style.Color ? Brushes.DeepSkyBlue : Brushes.Gray; }
         widthChoice.IsEnabled = enabled; fontChoice.IsEnabled = enabled;

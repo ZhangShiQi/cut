@@ -8,15 +8,53 @@ namespace Cut;
 public partial class MainWindow : Window
 {
     private readonly App app;
-    public MainWindow(App app, HotkeySettings settings)
+    private readonly IStartupRegistration startup;
+    private bool refreshingStartup;
+    private bool lastStartupEnabled;
+    public MainWindow(App app, HotkeySettings settings) : this(app, settings, new StartupRegistration()) { }
+    internal MainWindow(App app, HotkeySettings settings, IStartupRegistration startup)
     {
         InitializeComponent();
         this.app = app;
+        this.startup = startup;
+        MaxHeight = SystemParameters.WorkArea.Height;
         for (char c = 'A'; c <= 'Z'; c++) KeyChoice.Items.Add(c.ToString());
         CtrlCheck.IsChecked = (settings.Modifiers & 2) != 0;
         AltCheck.IsChecked = (settings.Modifiers & 1) != 0;
         ShiftCheck.IsChecked = (settings.Modifiers & 4) != 0;
         KeyChoice.SelectedItem = ((char)settings.Key).ToString();
+        RefreshStartup();
+        Activated += (_, _) => RefreshStartup();
+    }
+    private void RefreshStartup()
+    {
+        refreshingStartup = true;
+        try
+        {
+            lastStartupEnabled = startup.IsEnabled;
+            StartupCheck.IsChecked = lastStartupEnabled;
+            StartupStatus.Foreground = System.Windows.Media.Brushes.SlateGray;
+            StartupStatus.Text = !lastStartupEnabled ? "登录 Windows 后自动在托盘运行，不弹出设置窗口。"
+                : startup.IsCurrentLocation ? "已开启：登录 Windows 后在托盘运行。移动程序后需重新开启。"
+                : "已开启，但启动位置与当前程序不同。取消勾选后重新开启可更新位置。";
+        }
+        catch (Exception ex)
+        {
+            StartupStatus.Foreground = System.Windows.Media.Brushes.Firebrick;
+            StartupStatus.Text = "无法读取自动启动设置：" + ex.Message;
+        }
+        finally { refreshingStartup = false; }
+    }
+    private void ChangeStartup(object sender, RoutedEventArgs e)
+    {
+        if (refreshingStartup || startup is null) return;
+        try { startup.SetEnabled(StartupCheck.IsChecked == true); RefreshStartup(); }
+        catch (Exception ex)
+        {
+            refreshingStartup = true; StartupCheck.IsChecked = lastStartupEnabled; refreshingStartup = false;
+            StartupStatus.Foreground = System.Windows.Media.Brushes.Firebrick;
+            StartupStatus.Text = "自动启动设置未保存：" + ex.Message;
+        }
     }
     public void SetStatus(string text) => StatusText.Text = text;
     private void ApplyHotkey(object sender, RoutedEventArgs e)

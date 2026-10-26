@@ -5,6 +5,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -227,6 +229,56 @@ internal static class AnnotationTests
             var encoded = await VisionImage.PrepareAsync(seenVision!);
             Same(expected, Decode(Convert.FromBase64String(encoded.DataUrl.Split(',', 2)[1])), "Actual vision payload contains composed PNG");
             ui.Abort();
+
+            // Right click leaves drawing without losing marks, then the same pointer
+            // handler used by real mouse input must copy the composed image on double click.
+            var exited = Session(); var exitedOwner = Owner(); var kept = exited.GetOutputImage();
+            exited.SetTool(MarkTool.Pen); exitedOwner.BeginAnnotation(new(300, 200)); exited.Annotations!.Move(new(350, 220));
+            exited.RightClick();
+            Check(!exited.AnnotationMode && !exited.Annotations.IsDragging && Mouse.Captured is null && exited.Annotations.Items.Count == 1, "Right click cancels stroke, exits mode and releases capture");
+            Same(kept, exited.GetOutputImage(), "Right click preserves committed annotations");
+            var lockedBounds = exited.Selection.Selection;
+            await exitedOwner.HandlePointerDownAsync(new(300, 200), 1);
+            Check(exited.Selection.Selection == lockedBounds && !exited.Interaction.IsPointerDown, "Exited mode cannot move a marked selection");
+            exited.SetTool(MarkTool.Text); exitedOwner.StartTextEditor(new(200, 180)); exitedOwner.ActiveTextEditor!.Text = "Cancel draft";
+            exited.RightClick();
+            Check(!exited.AnnotationMode && exitedOwner.ActiveTextEditor is null && exited.Annotations.Items.Count == 1, "Right click cancels text editor and exits mode");
+            BitmapSource? doubleClickCopy = null;
+            exited.CopyImage = image => { doubleClickCopy = image; return Task.CompletedTask; };
+            await exitedOwner.HandlePointerDownAsync(new(300, 200), 2);
+            Check(exited.IsFinished && doubleClickCopy is not null, "Double click after right click copies and ends screenshot");
+            Same(kept, doubleClickCopy!, "Double click copies all committed marks");
+            var reentered = Session(); var reenteredOwner = Owner();
+            reentered.RightClick(); reentered.SetTool(MarkTool.Rectangle);
+            await reenteredOwner.HandlePointerDownAsync(new(400, 300), 2);
+            Check(reentered.AnnotationMode && !reentered.IsFinished && reentered.Annotations!.IsDragging, "Selecting a tool re-enters drawing and guards double-click copy");
+            reentered.RightClick(); reentered.RightClick();
+            Check(reentered.Annotations is null && !reentered.AnnotationMode && reentered.Selection.Selection.IsEmpty, "Second right click restores clear-selection behavior");
+            reentered.Abort();
+            log.AppendLine("PASS right-click exits drawing/text draft without losing marks, locked bounds, double-click composed copy, tool re-entry and second-right-click reset");
+
+            static System.Collections.Generic.IEnumerable<Button> AllButtons(DependencyObject parent)
+            {
+                if (parent is Button button) yield return button;
+                for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+                    foreach (var child in AllButtons(VisualTreeHelper.GetChild(parent, i))) yield return child;
+            }
+            var vector = Session(); var vectorOwner = Owner(); vectorOwner.UpdateLayout();
+            var vectorButtons = AllButtons(vectorOwner).ToArray();
+            Check(vectorButtons.Length >= 24, "All screenshot actions and palette buttons found");
+            foreach (var button in vectorButtons)
+            {
+                Check(button.Width == 36 && button.Height == 36 && button.Content is Image { Source: DrawingImage }, "Uniform SVG-backed vector button");
+                Check(!string.IsNullOrWhiteSpace(AutomationProperties.GetName(button)) && button.ToolTip is not null, "Accessible name and tooltip preserved");
+            }
+            foreach (var key in new[] { "矩形", "椭圆", "箭头", "画笔", "文字", "马赛克", "实色遮挡" })
+                vectorButtons.Single(b => AutomationProperties.GetName(b) == key).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(vector.AnnotationMode && vector.Annotations!.Tool == MarkTool.Cover, "SVG tool buttons retain click actions");
+            Preview(vectorOwner, Path.Combine(output, "annotation-svg-toolbar.png"));
+            vectorOwner.Width = 360; vectorOwner.Height = 560; vectorOwner.UpdateLayout(); vectorOwner.Refresh(true);
+            Preview(vectorOwner, Path.Combine(output, "annotation-svg-toolbar-compact.png"));
+            vector.Abort();
+            log.AppendLine("PASS SVG resources render, uniform 36px buttons, accessible tooltips/names, real button actions and narrow layout");
 
             var copy = Session(); BitmapSource? copied = null; copy.CopyImage = image => { copied = image; return Task.CompletedTask; };
             var copyOwner = Owner(); copy.SetTool(MarkTool.Text); copyOwner.StartTextEditor(new(200, 150)); copyOwner.ActiveTextEditor!.Text = "Copy pending text";

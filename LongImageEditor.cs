@@ -63,7 +63,7 @@ internal sealed class LongImageEditor : Window
         foreach (var color in new[] { Colors.Red, Colors.Gold, Colors.LimeGreen, Colors.DodgerBlue, Colors.Black, Colors.White })
         {
             var value = color; var button = Add("●", () => { CommitText(); Document.ChangeStyle(Document.Style with { Color = value }); Refresh(); });
-            button.Foreground = new SolidColorBrush(value); button.Background = Brushes.DimGray; button.ToolTip = "标注颜色";
+            ToolbarIcons.Apply(button, "标注颜色", value, value.ToString()); button.Background = Brushes.White;
         }
         foreach (double value in new[] { 2.0, 4.0, 8.0 }) widths.Items.Add(new ComboBoxItem { Content = value == 2 ? "细" : value == 4 ? "中" : "粗", Tag = value });
         foreach (double value in new[] { 18.0, 28.0, 40.0, 56.0 }) fonts.Items.Add(new ComboBoxItem { Content = value.ToString(), Tag = value });
@@ -103,6 +103,8 @@ internal sealed class LongImageEditor : Window
     private Button Add(string label, Action action)
     {
         var button = new Button { Content = label, Padding = new Thickness(9, 6, 9, 6), Margin = new Thickness(3) };
+        // Palette circles are applied by the caller with their actual color.
+        if (label != "●") ToolbarIcons.Apply(button, label, Color.FromRgb(30, 41, 59));
         button.Click += (_, _) => { if (!busy) action(); }; toolbar.Children.Add(button); return button;
     }
     private void StyleChanged()

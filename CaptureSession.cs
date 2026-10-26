@@ -31,7 +31,7 @@ public sealed class CaptureSession
     public AnnotationDocument? Annotations { get; private set; }
     internal AnnotationRenderer? AnnotationRenderer { get; private set; }
     public PixelRect AnnotationBounds { get; private set; }
-    public bool AnnotationMode => Annotations is not null && (Annotations.Tool != MarkTool.Select || Annotations.Locked || Annotations.EditingText || Annotations.IsDragging);
+    public bool AnnotationMode { get; private set; }
     internal Func<BitmapSource, Task> CopyImage { get; set; } = ExportService.CopyAsync;
     internal Action<BitmapSource, string> SaveImage { get; set; } = ExportService.SavePng;
     internal Func<OverlayWindow, string?>? ChooseSavePath { get; set; }
@@ -76,7 +76,11 @@ public sealed class CaptureSession
         if (AnnotationMode)
         {
             foreach (var window in windows) window.CancelTextEditor();
-            Annotations!.CancelDraft(); Annotations.Tool = MarkTool.Select; Update(); return;
+            Annotations!.CancelDraft(); Annotations.Deselect(); Annotations.Tool = MarkTool.Select;
+            AnnotationMode = false;
+            foreach (var window in windows) window.ReleaseAnnotationCapture();
+            StatusMessage = "已退出绘图，双击选区可复制图片；点击绘图工具可继续标注。";
+            Update(); return;
         }
         if (Selection.Selection.IsEmpty) Finish();
         else { ResetAnnotations(); StatusMessage = ""; Interaction.Reset(NativeMethods.CursorPosition()); Update(); }
@@ -124,6 +128,7 @@ public sealed class CaptureSession
         }
         if (tool != MarkTool.Select) Annotations.Deselect();
         Annotations.Tool = tool;
+        AnnotationMode = true;
         if (tool == MarkTool.Cover) Annotations.Style = Annotations.Style with { Color = Colors.Black };
         StatusMessage = ""; Update();
     }
@@ -142,7 +147,7 @@ public sealed class CaptureSession
     internal void ResetAnnotations()
     {
         foreach (var window in windows) window.CancelTextEditor();
-        Annotations = null; AnnotationRenderer = null; AnnotationBounds = default;
+        Annotations = null; AnnotationRenderer = null; AnnotationBounds = default; AnnotationMode = false;
     }
     public BitmapSource GetOutputImage()
     {
