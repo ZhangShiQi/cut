@@ -34,7 +34,7 @@ internal sealed class RecordingPreviewWindow : Window
     private readonly ProgressBar progress = new() { Minimum = 0, Maximum = 1, Height = 5, Margin = new Thickness(4), Visibility = Visibility.Collapsed };
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private CancellationTokenSource? exportCancel;
-    private bool playing, updating, busy, closed, forceClose, closeAfterExport, exported;
+    private bool playing, updating, busy, closed, forceClose, closeAfterExport, exported, presented;
     internal bool RestartRequested { get; private set; }
     internal Func<string?>? ChoosePathForTest { get; set; }
     internal RecordingExportOptions ExportOptions => new(format.SelectedIndex == 0 ? RecordingFormat.Gif : RecordingFormat.Mp4,
@@ -44,6 +44,7 @@ internal sealed class RecordingPreviewWindow : Window
     {
         this.tools = tools; this.clip = clip;
         Title = "Cut · 录制预览"; Width = 900; Height = 720; MinWidth = 680; MinHeight = 550;
+        ShowActivated = true; Topmost = true;
         WindowStartupLocation = WindowStartupLocation.CenterScreen; Background = new SolidColorBrush(Color.FromRgb(245, 247, 251));
         var root = new DockPanel { Margin = new Thickness(14) };
         var heading = new TextBlock { Text = $"录制预览  ·  {clip.Options.Area.Width} × {clip.Options.Area.Height}  ·  {clip.Seconds:0.00} 秒  ·  {clip.Options.Fps} FPS",
@@ -89,6 +90,14 @@ internal sealed class RecordingPreviewWindow : Window
             UpdateRange();
         };
         Loaded += (_, _) => { player.Position = TimeSpan.FromSeconds(start.Value); UpdateRange(); ExportNotice(); player.Play(); playing = true; UpdatePlay(); timer.Start(); };
+        ContentRendered += (_, _) =>
+        {
+            if (presented || closed) return;
+            presented = true;
+            // Raise the completed preview once, including stops from the global
+            // shortcut, then restore normal stacking so it does not stay pinned.
+            Activate(); Focus(); Topmost = false;
+        };
         Closing += (_, e) =>
         {
             if (!forceClose && !ConfirmDiscard()) { e.Cancel = true; return; }

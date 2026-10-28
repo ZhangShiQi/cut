@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -38,6 +39,16 @@ internal static class RecordingTests
         window.UpdateLayout(); var dpi = VisualTreeHelper.GetDpi(window);
         var image = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth * dpi.DpiScaleX), (int)Math.Ceiling(window.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
         image.Render(window); ExportService.SavePng(image, Path.Combine(Output, name));
+    }
+    private static Window CheckSelectionFrame(RecordingWindow window, PixelRect area, string stage)
+    {
+        var frame = window.SelectionFrameForTest;
+        Check(frame is { IsVisible: true }, stage + ": recording region remains visible");
+        var handle = new WindowInteropHelper(frame!).Handle;
+        Check(NativeMethods.GetWindowRect(handle, out var bounds) && bounds.Left == area.X - 4 && bounds.Top == area.Y - 4 &&
+            bounds.Right == area.Right + 4 && bounds.Bottom == area.Bottom + 4, stage + ": frame surrounds the exact physical capture region");
+        Check((NativeMethods.GetWindowLong(handle, -20) & 0x08000020) == 0x08000020, stage + ": frame allows mouse input through without activation");
+        return frame!;
     }
     private static System.Collections.Generic.IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
     {
@@ -158,7 +169,8 @@ internal static class RecordingTests
             await File.WriteAllTextAsync(Path.Combine("artifacts", "recording-test.txt"), log.AppendLine(ex.ToString()).ToString()); return 1;
         }
     }
-    private static async Task UiAsync(MediaTools tools, StringBuilder log)
+    private enum StopMode { Managed, Button, Hotkey, Limit }
+    private static async Task UiAsync(MediaTools tools, StringBuilder log, StopMode mode = StopMode.Managed)
     {
         byte[] pixels = Enumerable.Repeat((byte)230, 800 * 600 * 4).ToArray();
         var image = BitmapSource.Create(800, 600, 96, 96, PixelFormats.Bgr32, null, pixels, 800 * 4); image.Freeze();
@@ -167,25 +179,45 @@ internal static class RecordingTests
         using var occupied = new HotkeyService(); bool blockedF8 = occupied.TryRegister(0, 0x77);
         capture.CreateRecordingWindow = (area, monitor) =>
         {
+            Window? competing = null; MediaProcess? external = null; bool competingActivated = false;
+            IntPtr externalHandle = IntPtr.Zero;
             var window = new RecordingWindow(area, monitor) { CountdownEnabled = false,
                 CreateSession = (media, options) => new(media, options) { SyntheticInput = $"testsrc=size={options.Area.Width}x{options.Area.Height}:rate={options.Fps}" } };
             window.CreatePreview = (media, clip) =>
             {
+                Check(window.SelectionFrameForTest is null, "selection frame removed before preview");
+                Check(window.WindowState == WindowState.Normal && !NativeMethods.IsIconic(new WindowInteropHelper(window).Handle), "preview owner is not minimized");
                 var preview = new RecordingPreviewWindow(media, clip);
                 preview.Loaded += async (_, _) =>
                 {
                     try
                     {
                         previewed = true; await Task.Delay(800);
+                        var previewHandle = new WindowInteropHelper(preview).Handle;
+                        Check(preview.IsVisible && preview.WindowState == WindowState.Normal && NativeMethods.IsWindowVisible(previewHandle), "preview is shown immediately after stopping");
+                        Check(!preview.Topmost, "preview returns to normal stacking after initial presentation");
+                        if (mode != StopMode.Managed)
+                        {
+                            Check(IsAbove(previewHandle, externalHandle), mode + ": preview is above the independent foreground process");
+                            if (mode is StopMode.Button or StopMode.Hotkey)
+                                Check(preview.IsActive && NativeMethods.GetForegroundWindow() == previewHandle, mode + ": user-triggered stop activates preview");
+                            log.AppendLine($"PASS {mode}: preview visible above independent process, active={preview.IsActive}, normal stacking restored.");
+                        }
+                        else if (competingActivated)
+                            Check(preview.IsActive && NativeMethods.GetForegroundWindow() == previewHandle, "preview takes foreground focus from the previously active window");
+                        if (mode == StopMode.Managed)
+                            log.AppendLine(competingActivated ? "PASS preview activated in foreground over a competing window; normal stacking restored." : "NOTE foreground activation test unavailable on this desktop; visible preview and non-minimized owner verified.");
                         Render(preview, "preview.png"); preview.Width = 700; preview.Height = 560; await Task.Delay(100); Render(preview, "preview-compact.png");
                         preview.SetTrimForTest(.1, clip.Seconds); preview.SetFormatForTest(RecordingFormat.Mp4);
                         Check(preview.ExportOptions.Fps == clip.Options.Fps, "MP4 source fps default");
                         preview.SetFormatForTest(RecordingFormat.Gif); Check(preview.ExportOptions.Fps == 15, "GIF 15 fps default");
                         preview.ChoosePathForTest = () => null; await preview.ExportAsync(); Check(preview.IsVisible, "save dialog cancel keeps preview");
                         preview.ChoosePathForTest = () => Path.Combine(Output, "ui.gif"); await preview.ExportAsync(); Check(File.Exists(Path.Combine(Output, "ui.gif")), "real preview export action");
+                        Descendants<Button>(preview).Single(b => Equals(b.Content, "重新录制")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Check(preview.RestartRequested, "actual restart action returns to recording settings");
                     }
                     catch (Exception ex) { failure = ex; }
-                    finally { preview.Abort(); }
+                    finally { if (preview.IsVisible) preview.Abort(); }
                 };
                 return preview;
             };
@@ -193,21 +225,61 @@ internal static class RecordingTests
             {
                 try
                 {
+                    var initialFrame = CheckSelectionFrame(window, area, "recording settings opened before start");
+                    Render(initialFrame, "recording-region-ready.png");
                     Render(window, "recording-ready.png");
                     window.CountdownEnabled = true;
                     var countdownAttempt = window.ToggleAsync();
                     for (int i = 0; i < 60 && window.SessionForTest is null; i++) await Task.Delay(30);
+                    CheckSelectionFrame(window, area, "countdown");
                     window.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), Environment.TickCount, Key.Escape) { RoutedEvent = Keyboard.PreviewKeyDownEvent });
                     await countdownAttempt;
                     Check(window.SessionForTest is null && Descendants<ComboBox>(window).All(c => c.IsEnabled), "cancel countdown releases session and re-enables options");
+                    Check(ReferenceEquals(initialFrame, CheckSelectionFrame(window, area, "countdown cancelled")), "cancel countdown preserves the same region frame");
                     window.CountdownEnabled = false; await window.ToggleAsync();
                     Check(window.SessionForTest?.State == RecordingState.Recording, "UI start action: " + window.MessageForTest);
                     if (blockedF8) Check(window.StopShortcutForTest == "Ctrl + Alt + F8", "occupied F8 falls back explicitly");
                     await Task.Delay(550); Render(window, "recording-active.png"); await window.ToggleAsync();
                     Check(window.SessionForTest?.State == RecordingState.Paused, "UI pause action");
-                    await window.ToggleAsync(); await Task.Delay(450); await window.FinishAsync();
+                    CheckSelectionFrame(window, area, "paused");
+                    await window.ToggleAsync(); await Task.Delay(450);
+                    if (mode == StopMode.Managed)
+                    {
+                        competing = new Window { Title = "Cut · 合成前台窗口", Width = 500, Height = 300, ShowInTaskbar = false,
+                            WindowStartupLocation = WindowStartupLocation.CenterScreen, Content = new TextBlock { Text = "停止前的另一个窗口", Margin = new Thickness(20) } };
+                        competing.Show(); competingActivated = competing.Activate();
+                        await window.FinishAsync();
+                    }
+                    else
+                    {
+                        external = new MediaProcess(Path.Combine(AppContext.BaseDirectory, "Cut.exe"), new[] { "--recording-focus-fixture" });
+                        Check(await Task.WhenAny(external.FirstFrame, Task.Delay(10000)) == external.FirstFrame, "independent fixture ready: " + external.Error);
+                        string handle = external.Output.Split('\n').Single(l => l.StartsWith("fixture_hwnd=", StringComparison.Ordinal))[13..].Trim();
+                        externalHandle = new IntPtr(long.Parse(handle, System.Globalization.CultureInfo.InvariantCulture));
+                        NativeMethods.GetWindowThreadProcessId(externalHandle, out uint fixtureProcess);
+                        Check(fixtureProcess != Environment.ProcessId && fixtureProcess != 0, "fixture runs in a separate process");
+                        Check(NativeMethods.GetWindowRect(externalHandle, out var bounds), "independent fixture bounds");
+                        ClickWindow(externalHandle, new((bounds.Left + bounds.Right) / 2, (bounds.Top + bounds.Bottom) / 2));
+                        await Task.Delay(150);
+                        Check(NativeMethods.GetForegroundWindow() == externalHandle, "independent fixture owns foreground before stop");
+                        if (mode == StopMode.Button)
+                        {
+                            var button = Descendants<Button>(window).Single(b => Equals(b.Content, "停止并预览"));
+                            var point = button.PointToScreen(new Point(button.ActualWidth / 2, button.ActualHeight / 2));
+                            ClickWindow(new WindowInteropHelper(window).Handle, new((int)point.X, (int)point.Y));
+                        }
+                        else if (mode == StopMode.Hotkey) PressStopKey(window.StopShortcutForTest != "F8");
+                        else window.SessionForTest!.ActiveElapsedForTest = () => 60;
+                        long deadline = Environment.TickCount64 + 45000;
+                        while (window.IsVisible && window.SessionForTest is not null && failure is null && Environment.TickCount64 < deadline) await Task.Delay(50);
+                        Check(failure is null && previewed && window.IsVisible && window.SessionForTest is null, mode + ": preview and restart completed: " + failure + "; " + window.MessageForTest);
+                    }
+                    Check(!initialFrame.IsVisible, "first region frame closed on preview");
+                    var restartedFrame = CheckSelectionFrame(window, area, "restart before recording begins");
+                    window.Abort(); Check(!restartedFrame.IsVisible, "cancel closes the region frame");
                 }
                 catch (Exception ex) { failure = ex; window.Abort(); }
+                finally { competing?.Close(); external?.Dispose(); }
             };
             return window;
         };
@@ -219,8 +291,83 @@ internal static class RecordingTests
         Check(failure is null, "UI: " + failure); Check(previewed && capture.IsFinished, "whole screenshot -> recording -> preview -> export -> session teardown");
         using var released = new HotkeyService();
         if (blockedF8) Check(released.TryRegister(3, 0x77), "fallback stop shortcut released");
-        log.AppendLine("PASS actual toolbar entry, synthetic full session, start/pause/resume/stop, preview normal/compact renders, per-format defaults, save cancel, real export action, global stop shortcut release.");
+        log.AppendLine("PASS actual toolbar entry, region frame visible in settings/countdown/cancelled countdown/pause/restart with exact physical bounds and mouse passthrough, frame removed on preview/close; full session, per-format defaults, export, restart and shortcut release.");
         await Task.CompletedTask;
+    }
+
+    // Separate test process with no normal app initialization or personal settings.
+    internal static async Task<int> FocusFixtureAsync()
+    {
+        var window = new Window { Title = "Cut · 独立进程前台测试", Width = 500, Height = 300,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Content = new TextBlock { Text = "合成测试窗口\n用于验证录制预览的前台显示", FontSize = 20, Margin = new Thickness(25) } };
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.ContentRendered += (_, _) => ready.TrySetResult();
+        window.Show(); await ready.Task;
+        Console.WriteLine("fixture_hwnd=" + new WindowInteropHelper(window).Handle.ToInt64());
+        Console.WriteLine("frame=1"); Console.WriteLine("progress=continue"); await Console.Out.FlushAsync();
+        await Task.WhenAny(Console.In.ReadLineAsync(), Task.Delay(90000));
+        window.Close(); return 0;
+    }
+    [StructLayout(LayoutKind.Explicit, Size = 40)] private struct TestInput
+    {
+        [FieldOffset(0)] public uint Type;
+        [FieldOffset(8)] public ushort Key;
+        [FieldOffset(12)] public uint KeyFlags;
+        [FieldOffset(20)] public uint MouseFlags;
+    }
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, TestInput[] input, int size);
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    private static void ClickWindow(IntPtr handle, PixelPoint point)
+    {
+        Check(NativeMethods.GetAncestor(NativeMethods.WindowFromPoint(new() { X = point.X, Y = point.Y }), 2) == handle,
+            "refuse click unless owned test window is under pointer");
+        Check(SetCursorPos(point.X, point.Y), "move test pointer");
+        var input = new[] { new TestInput { MouseFlags = 2 }, new TestInput { MouseFlags = 4 } };
+        Check(SendInput(2, input, 40) == 2, "actual test click");
+    }
+    private static void PressStopKey(bool modifiers)
+    {
+        Check(!ScrollInputService.HasHeldInput(), "stop-key test requires no held input");
+        var keys = modifiers ? new ushort[] { 0x11, 0x12, 0x77 } : new ushort[] { 0x77 };
+        var releases = keys.Reverse().Select(k => new TestInput { Type = 1, Key = k, KeyFlags = 2 }).ToArray();
+        try
+        {
+            var input = keys.Select(k => new TestInput { Type = 1, Key = k }).Concat(releases).ToArray();
+            Check(SendInput((uint)input.Length, input, 40) == input.Length, "actual global stop shortcut");
+        }
+        finally { SendInput((uint)releases.Length, releases, 40); }
+    }
+    private static bool IsAbove(IntPtr upper, IntPtr lower)
+    {
+        int order = 0, upperOrder = -1, lowerOrder = -1;
+        NativeMethods.EnumWindows((IntPtr handle, IntPtr _) =>
+        {
+            if (handle == upper) upperOrder = order;
+            if (handle == lower) lowerOrder = order;
+            order++; return true;
+        }, IntPtr.Zero);
+        return upperOrder >= 0 && lowerOrder >= 0 && upperOrder < lowerOrder;
+    }
+    internal static async Task<int> UiNativeAsync()
+    {
+        Directory.CreateDirectory(Output);
+        var log = new StringBuilder("Native recording UI: independent synthetic foreground process; real stop-button click, global shortcut, accelerated 60s stop. Only generated media recorded.\n");
+        var pointer = NativeMethods.CursorPosition();
+        try
+        {
+            var tools = await MediaTools.LoadAsync();
+            foreach (var mode in new[] { StopMode.Button, StopMode.Hotkey, StopMode.Limit }) await UiAsync(tools, log, mode);
+            log.AppendLine("ALL NATIVE RECORDING UI CHECKS PASSED");
+            await File.WriteAllTextAsync(Path.Combine("artifacts", "recording-ui-native-test.txt"), log.ToString()); return 0;
+        }
+        catch (Exception ex)
+        {
+            foreach (var window in Application.Current.Windows.OfType<RecordingPreviewWindow>().ToArray()) window.Abort();
+            foreach (var window in Application.Current.Windows.OfType<RecordingWindow>().ToArray()) window.Abort();
+            await File.WriteAllTextAsync(Path.Combine("artifacts", "recording-ui-native-test.txt"), log.AppendLine(ex.ToString()).ToString()); return 1;
+        }
+        finally { SetCursorPos(pointer.X, pointer.Y); }
     }
 
     internal static async Task<int> NativeAsync()

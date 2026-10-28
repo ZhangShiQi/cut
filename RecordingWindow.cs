@@ -35,6 +35,7 @@ internal sealed class RecordingWindow : Window
     private bool transition, closed, forceClose, excluded, stopRequested;
     private string stopHint = "F8";
     internal RecordingSession? SessionForTest => session;
+    internal Window? SelectionFrameForTest => frame;
     internal string MessageForTest => status.Text;
     internal string StopShortcutForTest => stopHint;
     internal bool CountdownEnabled { get => countdown.IsChecked == true; set => countdown.IsChecked = value; }
@@ -65,7 +66,7 @@ internal sealed class RecordingWindow : Window
             excluded = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041) && NativeMethods.SetWindowDisplayAffinity(new WindowInteropHelper(this).Handle, 0x11);
             PositionOutside();
         };
-        Loaded += (_, _) => { PositionOutside(); ReadyMessage(); UpdateControls(); timer.Start(); };
+        Loaded += (_, _) => { PositionOutside(); ShowFrame(); ReadyMessage(); UpdateControls(); timer.Start(); };
         SystemEvents.SessionSwitch += OnSessionSwitch;
         LocationChanged += async (_, _) =>
         {
@@ -194,7 +195,7 @@ internal sealed class RecordingWindow : Window
         {
             if (!closed && session is not null && session.SegmentCount == 0 && session.State is RecordingState.Ready or RecordingState.Paused)
             {
-                session.Dispose(); session = null; frame?.Close(); frame = null; stopKey?.Dispose(); stopKey = null;
+                session.Dispose(); session = null; stopKey?.Dispose(); stopKey = null;
             }
             transition = false; if (!closed) UpdateControls();
             if (!closed && stopRequested) { stopRequested = false; if (session?.State == RecordingState.Recording || session?.SegmentCount > 0) await FinishAsync(); }
@@ -216,7 +217,10 @@ internal sealed class RecordingWindow : Window
             var clip = await session.FinishAsync(new Progress<double>(p => { if (!closed) status.Text = $"正在准备预览 {p:P0}…"; }));
             if (closed) return;
             frame?.Close(); frame = null; stopKey?.Dispose(); stopKey = null;
-            Topmost = false; WindowState = WindowState.Minimized;
+            // An owned preview must not inherit a minimized owner. Keep the
+            // controller normal and let the modal preview cover/disable it.
+            Topmost = false; WindowState = WindowState.Normal;
+            status.Text = "录制已完成，请在预览窗口中查看和导出。";
             preview = CreatePreview(tools!, clip); preview.Owner = this;
             preview.ShowDialog();
             bool again = preview.RestartRequested; preview = null;
@@ -224,11 +228,11 @@ internal sealed class RecordingWindow : Window
             session.Dispose(); session = null;
             if (!again) { forceClose = true; Close(); return; }
             settings.Visibility = Visibility.Visible; Height = 290; WindowState = WindowState.Normal; Topmost = true;
-            clock.Text = "00:00 / 01:00"; ReadyMessage(); PositionOutside(); Activate();
+            clock.Text = "00:00 / 01:00"; ShowFrame(); ReadyMessage(); PositionOutside(); Activate();
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (!closed) status.Text = "未能完成，已有录制保留，可重试：" + ex.Message; }
-        finally { transition = false; if (!closed) UpdateControls(); }
+        finally { transition = false; if (!closed) { Topmost = true; UpdateControls(); } }
     }
     private void ShowFrame()
     {

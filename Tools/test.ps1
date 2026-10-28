@@ -9,7 +9,7 @@ try {
     Invoke-DotNet @('build', 'Tests\Updates\Cut.UpdateTests.csproj', '-c', 'Release', '--nologo')
     $application = Join-Path $projectRoot 'bin\Release\net8.0-windows\win-x64\Cut.exe'
     # Each existing suite uses synthetic fixtures, test files and isolated settings.
-    $suites = @('self', 'qr', 'window', 'ocr', 'translation', 'ai', 'vision', 'annotation', 'scroll', 'auto-scroll', 'scroll-optimization', 'scroll-permissive', 'startup', 'update-ui', 'recording')
+    $suites = @('self', 'qr', 'window', 'ocr', 'translation', 'ai', 'vision', 'annotation', 'scroll', 'auto-scroll', 'scroll-optimization', 'scroll-permissive', 'startup', 'update-ui', 'recording', 'recording-native', 'recording-ui-native')
     foreach ($suite in $suites) {
         $process = Start-Process -FilePath $application -ArgumentList "--$suite-test" -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
         if (!$process.WaitForExit(240000)) { $process.Kill(); throw "Test timed out: $suite" }

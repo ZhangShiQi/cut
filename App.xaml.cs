@@ -32,6 +32,8 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Contains("--recording-focus-fixture")) { Shutdown(await RecordingTests.FocusFixtureAsync()); return; }
+        if (e.Args.Contains("--recording-ui-native-test")) { Shutdown(await RecordingTests.UiNativeAsync()); return; }
         if (e.Args.Contains("--startup-test")) { Shutdown(await StartupTests.RunAsync(this)); return; }
         if (e.Args.Contains("--recording-test")) { Shutdown(await RecordingTests.RunAsync()); return; }
         if (e.Args.Contains("--recording-native-test")) { Shutdown(await RecordingTests.NativeAsync()); return; }
