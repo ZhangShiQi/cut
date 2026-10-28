@@ -27,6 +27,7 @@ $restore = @(); if ($NoRestore) { $restore = @('--no-restore') }
 Push-Location $projectRoot
 try {
     & (Join-Path $PSScriptRoot 'download-ocr-models.ps1')
+    & (Join-Path $PSScriptRoot 'download-recording-tools.ps1')
     Invoke-DotNet (@('publish', 'Cut.csproj', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '--artifacts-path', (Join-Path $buildRoot 'build'), '-p:PublishSingleFile=false', '-p:DebugType=None', '-p:DebugSymbols=false', '-o', $runtime) + $restore)
     Invoke-DotNet (@('publish', 'Launcher\Cut.Launcher.csproj', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '--artifacts-path', (Join-Path $buildRoot 'build'), '-p:DebugType=None', '-p:DebugSymbols=false', '-o', $launcher) + $restore)
     New-Item -ItemType Directory -Path (Join-Path $OutputDirectory 'tools\runtime') -Force | Out-Null

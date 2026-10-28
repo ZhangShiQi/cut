@@ -92,6 +92,25 @@ public sealed class CaptureSession
     public void ClearStatus() => StatusMessage = "";
     internal Func<PixelRect, PixelRect, ScrollCaptureWindow> CreateScrollWindow { get; set; } = (area, monitor) => new(area, monitor);
     internal Func<BitmapSource, LongImageEditor> CreateLongEditor { get; set; } = image => new(image);
+    internal Func<PixelRect, PixelRect, RecordingWindow> CreateRecordingWindow { get; set; } = (area, monitor) => new(area, monitor);
+    public void StartRecording(OverlayWindow owner)
+    {
+        if (Busy || finished || Selection.IsDragging || Annotations?.IsDragging == true) return;
+        CommitText(); ConfirmPreview(); var area = Selection.Selection;
+        var monitor = Snapshot.Monitors.FirstOrDefault(m => area.Intersect(m.Bounds) == area);
+        try { new RecordingOptions(area, monitor?.Bounds ?? default).Validate(); }
+        catch (ArgumentException ex) { StatusMessage = ex.Message; Update(); return; }
+        Busy = true;
+        try
+        {
+            var recording = CreateRecordingWindow(area, monitor!.Bounds);
+            recording.HasAnnotations = Annotations?.Locked == true;
+            foreach (var window in windows) window.Hide();
+            resultWindow = recording; recording.ShowDialog(); resultWindow = null;
+        }
+        catch (Exception ex) { if (!finished) MessageBox.Show("无法开始录制：" + ex.Message, "Cut", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        finally { Busy = false; Finish(); }
+    }
     public void StartScroll(OverlayWindow owner)
     {
         if (Busy || finished || Selection.IsDragging || Annotations?.IsDragging == true) return;
@@ -174,7 +193,7 @@ public sealed class CaptureSession
         Interaction.LoseCapture();
         recognition?.Cancel();
         foreach (var window in windows) window.CancelTextEditor();
-        resultWindow?.Close();
+        if (resultWindow is RecordingWindow recording) recording.Abort(); else resultWindow?.Close();
         foreach (var window in windows) window.Close();
         windows.Clear();
         Completed?.Invoke();

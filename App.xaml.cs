@@ -33,6 +33,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
         if (e.Args.Contains("--startup-test")) { Shutdown(await StartupTests.RunAsync(this)); return; }
+        if (e.Args.Contains("--recording-test")) { Shutdown(await RecordingTests.RunAsync()); return; }
+        if (e.Args.Contains("--recording-native-test")) { Shutdown(await RecordingTests.NativeAsync()); return; }
         if (e.Args.Contains("--update-ui-test")) { Shutdown(await UpdateUiTests.RunAsync(this)); return; }
         if (e.Args.Contains("--self-test")) { Shutdown(SelfTests.Run()); return; }
         if (e.Args.Contains("--qr-test")) { Shutdown(await QrTests.RunAsync()); return; }
@@ -61,6 +63,7 @@ public partial class App : Application
     }
     private async Task InitializeAsync(string[] args)
     {
+        _ = Task.Run(RecordingCache.CleanupOrphans);
         UpdatePaths.Configure(args);
         if (LauncherContext.ConfigureOrRedirect(args)) { Shutdown(); return; }
         bool autoStart = IsAutoStart(args);

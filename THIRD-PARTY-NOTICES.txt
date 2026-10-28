@@ -34,3 +34,14 @@ Offline OCR:
 
 OCR test images are rendered from synthetic sample text by WPF using the local
 Microsoft YaHei UI font. No font binaries or real user screenshots are bundled.
+
+Recording/export tools:
+- FFmpeg and ffprobe 9.0.2-essentials_build-www.gyan.dev, unmodified Windows x64
+  executables, invoked as separate local processes. GPL version 3.
+  Binary distributor: https://www.gyan.dev/ffmpeg/builds/
+  FFmpeg source: https://github.com/FFmpeg/FFmpeg/commit/946fcce07b
+  License: MediaTools/ffmpeg/LICENSE.txt.
+  Upstream build configuration, linked external libraries and versions:
+  MediaTools/ffmpeg/BUILD-README.txt. This static build includes libx264 and
+  other third-party components listed there. Reproduction/download URL and
+  archive/executable SHA-256: MediaTools/ffmpeg/manifest.json.

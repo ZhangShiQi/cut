@@ -30,3 +30,7 @@ node_modules/
 # Downloaded OCR weights (reproduce with Tools/download-ocr-models.ps1)
 Models/*.onnx
 Models/*.download
+
+# Reproducible, checksum-pinned recording binaries
+MediaTools/ffmpeg/*.exe
+MediaTools/ffmpeg/*.download*

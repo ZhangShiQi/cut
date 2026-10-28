@@ -10,3 +10,5 @@
 *.ico binary
 *.svg text eol=lf
 *.cjs text eol=lf
+# Preserve the original whitespace in the upstream build notice.
+MediaTools/ffmpeg/BUILD-README.txt -whitespace

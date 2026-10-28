@@ -33,8 +33,12 @@
     <Resource Include="Assets\Toolbar\*.svg" />
     <None Update="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Licenses\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="MediaTools\ffmpeg\*.exe;MediaTools\ffmpeg\manifest.json;MediaTools\ffmpeg\*.txt;MediaTools\ffmpeg\README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="CheckOcrModels" BeforeTargets="BeforeBuild">
     <Error Condition="!Exists('Models\ch_PP-OCRv5_det_mobile.onnx') Or !Exists('Models\ch_PP-OCRv5_rec_mobile.onnx')" Text="缺少 OCR 模型，请先运行 powershell -File Tools\download-ocr-models.ps1" />
+  </Target>
+  <Target Name="CheckRecordingTools" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('MediaTools/ffmpeg/ffmpeg.exe') Or !Exists('MediaTools/ffmpeg/ffprobe.exe')" Text="缺少录制工具，请先运行 powershell -File Tools\download-recording-tools.ps1" />
   </Target>
 </Project>

@@ -22,6 +22,7 @@ internal static class ToolbarIcons
         "画笔" => "pen", "文字" => "text", "马赛克" => "mosaic", "实色遮挡" => "cover",
         "撤销" => "undo", "重做" => "redo", "重新框选" => "reselect", "识别二维码" => "qr",
         "识别文字" => "ocr", "✦ AI 看图" or "AI 看图" => "ai", "长截图" => "scroll",
+        "录制" => "record",
         "保存" or "保存 PNG" => "save", "取消" or "关闭" => "close", "复制 ✓" or "复制图片" => "copy",
         "删除" => "delete", "框选局部" => "crop", "全图" => "full", "适应宽度" => "fit",
         "100%" => "actual", "－" => "zoom-out", "＋" => "zoom-in", "标注颜色" => "color",

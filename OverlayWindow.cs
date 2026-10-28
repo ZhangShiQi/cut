@@ -60,6 +60,7 @@ public sealed partial class OverlayWindow : Window
         AddButton(buttons, "识别文字", "Ctrl + T", async (_, _) => await session.RecognizeTextAsync(this));
         AiButton = AddButton(buttons, "✦ AI 看图", "Ctrl + I", (_, _) => session.AnalyzeImage(this));
         AddButton(buttons, "长截图", "Ctrl + L · 手动或自动滚动，自动拼接", (_, _) => session.StartScroll(this));
+        AddButton(buttons, "录制", "选区录制，最长 60 秒；录完导出 GIF / MP4", (_, _) => session.StartRecording(this));
         AddButton(buttons, "保存", "Ctrl + S", (_, _) => session.Save(this));
         cancelButton = AddButton(buttons, "取消", "Esc", (_, _) => session.Cancel());
         AddButton(buttons, "复制 ✓", "Enter / Ctrl + C", async (_, _) => await session.CopyAsync(this));
