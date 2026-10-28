@@ -379,14 +379,19 @@ internal static class RecordingTests
             Check(NativeMethods.GetAncestor(NativeMethods.WindowFromPoint(new() { X = (int)origin.X, Y = (int)origin.Y }), 2) == handle, "native trim drag targets only own preview");
             SetCursorPos((int)origin.X, (int)origin.Y);
             await Task.Delay(60);
+            int starts = 0, completes = 0; bool cancelled = false;
+            DragStartedEventHandler began = (_, _) => starts++;
+            DragCompletedEventHandler completed = (_, e) => { completes++; cancelled = e.Canceled; };
+            thumb.DragStarted += began; thumb.DragCompleted += completed;
             try
             {
                 Check(SendInput(1, new[] { new TestInput { MouseFlags = 2 } }, 40) == 1, "native trim mouse down");
-                await Task.Delay(60);
-                Check(thumb.IsDragging, "native mouse captures trim handle; hit=" + preview.InputHitTest(preview.PointFromScreen(origin))?.GetType().Name);
+                long captureDeadline = Environment.TickCount64 + 1500;
+                while (!thumb.IsDragging && completes == 0 && Environment.TickCount64 < captureDeadline) await Task.Delay(20);
+                Check(thumb.IsDragging, $"native mouse captures trim handle; starts={starts}, completes={completes}, cancelled={cancelled}, button={Mouse.LeftButton}, captured={Mouse.Captured?.GetType().Name}, hit={preview.InputHitTest(preview.PointFromScreen(origin))?.GetType().Name}");
                 for (int i = 1; i <= 10; i++) { SetCursorPos((int)(origin.X + (target.X - origin.X) * i / 10), (int)(origin.Y + (target.Y - origin.Y) * i / 10)); await Task.Delay(15); }
             }
-            finally { SendInput(1, new[] { new TestInput { MouseFlags = 4 } }, 40); }
+            finally { SendInput(1, new[] { new TestInput { MouseFlags = 4 } }, 40); thumb.DragStarted -= began; thumb.DragCompleted -= completed; }
             await Task.Delay(80);
         }
         else Drag(Handle("裁剪起点"), timeline.ActualWidth * 3);
