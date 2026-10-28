@@ -258,10 +258,16 @@ internal static class RecordingTests
                         externalHandle = new IntPtr(long.Parse(handle, System.Globalization.CultureInfo.InvariantCulture));
                         NativeMethods.GetWindowThreadProcessId(externalHandle, out uint fixtureProcess);
                         Check(fixtureProcess != Environment.ProcessId && fixtureProcess != 0, "fixture runs in a separate process");
-                        Check(NativeMethods.GetWindowRect(externalHandle, out var bounds), "independent fixture bounds");
-                        ClickWindow(externalHandle, new((bounds.Left + bounds.Right) / 2, (bounds.Top + bounds.Bottom) / 2));
+                        // Make the fixture available for the setup click even if the
+                        // desktop currently has another full-screen/foreground window.
+                        Check(NativeMethods.SetWindowPos(externalHandle, new IntPtr(-1), 0, 0, 0, 0, 0x0053),
+                            "raise owned fixture for setup; exited=" + external.HasExited);
+                        // The recording controller is topmost and may cover the center
+                        // of a fixture on a small monitor. Use a verified visible point.
+                        ClickWindowInterior(externalHandle);
                         await Task.Delay(150);
                         Check(NativeMethods.GetForegroundWindow() == externalHandle, "independent fixture owns foreground before stop");
+                        Check(NativeMethods.SetWindowPos(externalHandle, new IntPtr(-2), 0, 0, 0, 0, 0x0013), "fixture returns to normal stacking before stop");
                         if (mode == StopMode.Button)
                         {
                             var button = Descendants<Button>(window).Single(b => Equals(b.Content, "停止并预览"));
@@ -306,7 +312,9 @@ internal static class RecordingTests
         window.Show(); await ready.Task;
         Console.WriteLine("fixture_hwnd=" + new WindowInteropHelper(window).Handle.ToInt64());
         Console.WriteLine("frame=1"); Console.WriteLine("progress=continue"); await Console.Out.FlushAsync();
-        await Task.WhenAny(Console.In.ReadLineAsync(), Task.Delay(90000));
+        // Console's synchronized reader can block inside ReadLineAsync. Never
+        // let the fixture's dispatcher wait synchronously for its parent pipe.
+        await Task.WhenAny(Task.Run(() => Console.In.ReadLine()), Task.Delay(90000));
         window.Close(); return 0;
     }
     [StructLayout(LayoutKind.Explicit, Size = 40)] private struct TestInput
@@ -318,6 +326,20 @@ internal static class RecordingTests
     }
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, TestInput[] input, int size);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    private static void ClickWindowInterior(IntPtr handle)
+    {
+        Check(NativeMethods.GetWindowRect(handle, out var bounds), "independent fixture bounds");
+        foreach (double y in new[] { .8, .5, .3 })
+        foreach (double x in new[] { .8, .5, .2 })
+        {
+            var point = new PixelPoint(bounds.Left + (int)((bounds.Right - bounds.Left) * x), bounds.Top + (int)((bounds.Bottom - bounds.Top) * y));
+            if (NativeMethods.GetAncestor(NativeMethods.WindowFromPoint(new() { X = point.X, Y = point.Y }), 2) != handle) continue;
+            ClickWindow(handle, point); return;
+        }
+        var foregroundClass = new StringBuilder(256);
+        NativeMethods.GetClassName(NativeMethods.GetForegroundWindow(), foregroundClass, foregroundClass.Capacity);
+        throw new InvalidOperationException("Independent fixture has no visible click point; desktop may be locked or covered. Foreground class=" + foregroundClass);
+    }
     private static void ClickWindow(IntPtr handle, PixelPoint point)
     {
         Check(NativeMethods.GetAncestor(NativeMethods.WindowFromPoint(new() { X = point.X, Y = point.Y }), 2) == handle,

@@ -46,6 +46,13 @@ try {
     if ($manifest.version -ne $version -or $manifest.runtimeIdentifier -ne 'win-x64' -or $manifest.sourceCommit -ne $head -or ($Publish -and $manifest.sourceDirty)) { throw 'Package does not match the verified source/version/platform.' }
     $expected = ((Get-Content -LiteralPath ($package + '.sha256') -Raw).Trim() -split '\s+')[0]
     if ((Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash -ne $expected) { throw 'Package checksum mismatch.' }
+    # Exercise the shipped WPF runtime as well as the development build. These
+    # checks use only generated media and the isolated foreground fixture.
+    $recordingCheck = Start-Process -FilePath (Join-Path $packageDirectory 'tools\runtime\Cut.exe') -ArgumentList '--recording-ui-native-test' -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
+    if (!$recordingCheck.WaitForExit(240000)) { $recordingCheck.Kill(); throw 'Packaged recording UI check timed out.' }
+    if ($recordingCheck.ExitCode -ne 0) { throw 'Packaged recording UI check failed. Inspect artifacts/recording-ui-native-test.txt.' }
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'artifacts\recording-ui-native-test.txt') -Destination (Join-Path $OutputDirectory 'packaged-recording-ui-test.txt')
+    Write-Output 'PASS packaged recording region frame and independent-process preview foreground checks'
     & "$PSScriptRoot\test-portable-update.ps1" -Package $package -OutputDirectory (Join-Path $OutputDirectory 'portable-check')
     if (!$Publish) { Write-Output "LOCAL VERIFIED PACKAGE: $package"; Write-Output 'No source refs or remote publishing state were changed.'; return }
     if (((Read-Git @('rev-parse','HEAD')) -join '') -ne $head -or @(Read-Git @('status','--porcelain','--untracked-files=normal')).Count) { throw 'Source changed during verification.' }
