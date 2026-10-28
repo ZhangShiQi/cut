@@ -26,6 +26,27 @@
         <TextBlock Text="Ctrl + Q 识别选区内的二维码" Foreground="#197B68" FontSize="13" Margin="0,8,0,0"/>
         <TextBlock Text="Ctrl + T 识别文字 · 支持中英文混排" Foreground="#197B68" FontSize="13" Margin="0,8,0,0"/>
         <TextBlock Text="Ctrl + I AI 看图 · 界面、图表与报错分析" Foreground="#197B68" FontSize="13" Margin="0,8,0,0"/>
+        <StackPanel x:Name="UpdatePanel" Margin="0,18,0,0">
+          <Separator Margin="0,0,0,15" Background="#E9EDF3"/>
+          <TextBlock Text="版本与更新" FontWeight="SemiBold"/>
+          <TextBlock Text="{Binding CurrentVersion}" Margin="0,8,0,8"/>
+          <CheckBox x:Name="AutoUpdateCheck" Content="自动检查并下载正式版本" IsChecked="{Binding Automatic, Mode=OneWay}" Click="ChangeAutomaticUpdate"/>
+          <TextBlock Text="{Binding Status}" Foreground="#197B68" TextWrapping="Wrap" Margin="0,10,0,5"/>
+          <TextBlock Text="{Binding Details}" Foreground="#65758A" FontSize="12" TextWrapping="Wrap"/>
+          <WrapPanel Margin="0,10,0,5">
+            <Button Content="检查更新" Click="CheckUpdates" IsEnabled="{Binding CanCheck}" Padding="10,5" Margin="0,0,6,5"/>
+            <Button Content="取消下载" Click="CancelUpdate" IsEnabled="{Binding CanCancel}" Padding="10,5" Margin="0,0,6,5"/>
+            <Button Content="重启并更新" Click="InstallUpdate" IsEnabled="{Binding CanInstall}" Padding="10,5" Margin="0,0,0,5"/>
+          </WrapPanel>
+          <TextBox Text="{Binding ReleaseNotes, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="140" VerticalScrollBarVisibility="Auto" BorderThickness="0"/>
+          <Expander Header="私有更新仓库访问（可选）" Margin="0,8,0,0" FontSize="12">
+            <StackPanel Margin="0,8,0,0">
+              <TextBlock Text="填写具有发行仓库 Contents 读取权限的个人令牌，仅加密保存到当前 Windows 用户。公开仓库无需填写。" TextWrapping="Wrap" Foreground="#65758A"/>
+              <PasswordBox x:Name="ReleaseToken" Margin="0,8,0,5" MaxLength="4096"/>
+              <Button Content="保存令牌（留空则清除）" Click="SaveReleaseToken" Padding="10,5" HorizontalAlignment="Left"/>
+            </StackPanel>
+          </Expander>
+        </StackPanel>
       </StackPanel>
       </ScrollViewer>
     </Border>

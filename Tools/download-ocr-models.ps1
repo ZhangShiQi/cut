@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $modelRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\Models'))
 $manifest = Get-Content -LiteralPath (Join-Path $modelRoot 'manifest.json') -Raw | ConvertFrom-Json
 foreach ($model in $manifest.models) {

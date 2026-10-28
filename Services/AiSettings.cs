@@ -38,8 +38,8 @@ public sealed class AiSettings
 public sealed class AiSettingsStore
 {
     private readonly string path;
-    public AiSettingsStore() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Cut", "ai.json")) { }
-    public static AiSettingsStore Vision() => new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Cut", "vision.json"));
+    public AiSettingsStore() : this(Path.Combine(Cut.UpdateEngine.UpdatePaths.Data, "ai.json")) { }
+    public static AiSettingsStore Vision() => new(Path.Combine(Cut.UpdateEngine.UpdatePaths.Data, "vision.json"));
     internal AiSettingsStore(string path) => this.path = path;
     private sealed class Stored
     {

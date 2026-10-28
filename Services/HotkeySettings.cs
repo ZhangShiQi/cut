@@ -6,7 +6,7 @@ namespace Cut.Services;
 
 public sealed record HotkeySettings(uint Modifiers = 3, uint Key = 65)
 {
-    private static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Cut", "settings.json");
+    private static string FilePath => Path.Combine(Cut.UpdateEngine.UpdatePaths.Data, "settings.json");
     public static HotkeySettings Load()
     {
         try

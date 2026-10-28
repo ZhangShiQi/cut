@@ -17,6 +17,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         this.app = app;
         this.startup = startup;
+        UpdatePanel.DataContext = app.Updates;
         MaxHeight = SystemParameters.WorkArea.Height;
         for (char c = 'A'; c <= 'Z'; c++) KeyChoice.Items.Add(c.ToString());
         CtrlCheck.IsChecked = (settings.Modifiers & 2) != 0;
@@ -64,6 +65,23 @@ public partial class MainWindow : Window
         if (KeyChoice.SelectedItem is string key) app.ChangeHotkey(new(modifiers, key[0]));
     }
     private async void StartCapture(object sender, RoutedEventArgs e) => await app.StartCaptureAsync();
+    private async void CheckUpdates(object sender, RoutedEventArgs e) { if (app.Updates is not null) await app.Updates.CheckAsync(); }
+    private void CancelUpdate(object sender, RoutedEventArgs e) => app.Updates?.Cancel();
+    private void ChangeAutomaticUpdate(object sender, RoutedEventArgs e)
+    {
+        if (app.Updates is null) return;
+        try { app.Updates.SetAutomatic(AutoUpdateCheck.IsChecked == true); }
+        catch (Exception ex) { AutoUpdateCheck.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, app.Updates.Automatic); SetStatus("更新设置未保存：" + ex.Message); }
+    }
+    private void InstallUpdate(object sender, RoutedEventArgs e)
+    {
+        try { app.Updates?.Install(); } catch (Exception ex) { SetStatus(ex.Message); }
+    }
+    private void SaveReleaseToken(object sender, RoutedEventArgs e)
+    {
+        try { Updates.UpdateCredentials.Save(ReleaseToken.Password); ReleaseToken.Clear(); SetStatus("更新仓库读取令牌已保存。留空保存可清除令牌。"); }
+        catch (Exception ex) { SetStatus("读取令牌未保存：" + ex.Message); }
+    }
     private void OpenTranslationSettings(object sender, RoutedEventArgs e) => new TranslationSettingsWindow { Owner = this }.ShowDialog();
     private void OpenAiSettings(object sender, RoutedEventArgs e) => new AiSettingsWindow { Owner = this }.ShowDialog();
     private void OpenVisionSettings(object sender, RoutedEventArgs e) => new AiSettingsWindow(true) { Owner = this }.ShowDialog();

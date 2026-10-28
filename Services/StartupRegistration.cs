@@ -19,7 +19,7 @@ internal sealed class StartupRegistration : IStartupRegistration
     private readonly RegistryKey root;
     private readonly string keyPath;
     private readonly Func<string?> executable;
-    public StartupRegistration() : this(Registry.CurrentUser, RunKey, () => Environment.ProcessPath) { }
+    public StartupRegistration() : this(Registry.CurrentUser, RunKey, () => Cut.Updates.LauncherContext.Root is string root ? Path.Combine(root, "Cut.exe") : Environment.ProcessPath) { }
     internal StartupRegistration(RegistryKey root, string keyPath, Func<string?> executable)
     { this.root = root; this.keyPath = keyPath; this.executable = executable; }
 
@@ -55,5 +55,19 @@ internal sealed class StartupRegistration : IStartupRegistration
             using var key = root.OpenSubKey(keyPath, writable: true);
             key?.DeleteValue(ValueName, throwOnMissingValue: false);
         }
+    }
+    public bool MigrateLegacyEntry()
+    {
+        // Only migrate Cut's existing enabled entry from a version predating the launcher.
+        // Never enable startup, replace an unrelated command, or move another managed install.
+        var command = RegisteredCommand;
+        if (command is null || IsCurrentLocation) return false;
+        var match = System.Text.RegularExpressions.Regex.Match(command, "^\"([^\"]+)\" --autostart$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success) return false;
+        var previous = match.Groups[1].Value;
+        if (!File.Exists(previous) || !Path.GetFileName(previous).Equals("Cut.exe", StringComparison.OrdinalIgnoreCase)) return false;
+        var info = System.Diagnostics.FileVersionInfo.GetVersionInfo(previous);
+        if (info.ProductName != "Cut" || info.FileMajorPart != 0 || info.FileMinorPart > 13) return false;
+        SetEnabled(true); return true;
     }
 }

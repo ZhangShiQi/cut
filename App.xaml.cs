@@ -4,6 +4,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Cut.Services;
+using Cut.UpdateEngine;
+using Cut.Updates;
 using Microsoft.Win32;
 using Forms = System.Windows.Forms;
 
@@ -11,7 +13,7 @@ namespace Cut;
 
 public partial class App : Application
 {
-    private Mutex? instanceMutex;
+    private SingleInstanceHost? instanceHost;
     private HotkeyService? hotkey;
     private Forms.NotifyIcon? tray;
     private System.Drawing.Icon? trayIcon;
@@ -20,12 +22,18 @@ public partial class App : Application
     private HotkeySettings settings = new();
     private bool starting;
     private bool hotkeyRegistered;
+    private string? notifiedPackage;
     public bool IsExiting { get; private set; }
+    public UpdateCoordinator? Updates { get; internal set; }
+    internal static bool IsSafeToRestart(bool starting, bool hasCapture, bool exiting, bool hasOtherWindow) => !starting && !hasCapture && !exiting && !hasOtherWindow;
+    internal bool CanRestartForUpdate => IsSafeToRestart(starting, session is not null, IsExiting,
+        Windows.OfType<Window>().Any(w => w != settingsWindow && w.IsVisible));
 
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         if (e.Args.Contains("--startup-test")) { Shutdown(await StartupTests.RunAsync(this)); return; }
+        if (e.Args.Contains("--update-ui-test")) { Shutdown(await UpdateUiTests.RunAsync(this)); return; }
         if (e.Args.Contains("--self-test")) { Shutdown(SelfTests.Run()); return; }
         if (e.Args.Contains("--qr-test")) { Shutdown(await QrTests.RunAsync()); return; }
         if (e.Args.Contains("--window-test")) { Shutdown(await WindowSelectionTests.RunAsync()); return; }
@@ -43,17 +51,37 @@ public partial class App : Application
         if (e.Args.Contains("--scroll-benchmark")) { Shutdown(await ScrollOptimizationTests.BenchmarkAsync()); return; }
         if (e.Args.Contains("--auto-scroll-native-test")) { Shutdown(await AutoScrollTests.NativeAsync()); return; }
         if (e.Args.Contains("--smoke-test")) { Shutdown(await SelfTests.SmokeAsync()); return; }
-        bool autoStart = IsAutoStart(e.Args);
-        bool startupSmoke = e.Args.Contains("--startup-smoke-test");
-        instanceMutex = new Mutex(true, startupSmoke ? "Local\\Cut.Screenshot.StartupSmokeTest" : "Local\\Cut.Screenshot.SingleInstance", out bool created);
-        if (!created)
+        try { await InitializeAsync(e.Args); }
+        catch (Exception ex)
         {
-            if (!autoStart) MessageBox.Show("Cut 已在运行，请通过托盘图标或截图快捷键使用。", "Cut");
+            try { DurableFiles.Write(System.IO.Path.Combine(UpdatePaths.Data, "device", "startup-error.json"), new { error = ex.ToString() }); } catch { }
+            if (!e.Args.Contains("--startup-pipe") && UpdatePaths.TestKey is null) MessageBox.Show("Cut 启动失败：\n" + ex.Message, "Cut");
+            Shutdown(1);
+        }
+    }
+    private async Task InitializeAsync(string[] args)
+    {
+        UpdatePaths.Configure(args);
+        if (LauncherContext.ConfigureOrRedirect(args)) { Shutdown(); return; }
+        bool autoStart = IsAutoStart(args);
+        bool startupSmoke = args.Contains("--startup-smoke-test");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        StartupHandshake? handshake = null;
+        var pipeName = UpdatePaths.Argument(args, "--startup-pipe");
+        if (LauncherContext.Root is not null && pipeName is null) throw new InvalidOperationException("请通过根目录 Cut.exe 启动。");
+        if (pipeName is not null)
+            handshake = await StartupHandshake.ConnectAsync(pipeName, UpdatePaths.Argument(args, "--startup-nonce") ?? "", timeout.Token);
+        await using var startupHandshake = handshake;
+        instanceHost = new SingleInstanceHost(startupSmoke ? "Cut.Tests.StartupSmokeTest" : UpdatePaths.TestKey);
+        if (!instanceHost.IsPrimary)
+        {
+            if (!autoStart) await instanceHost.NotifyExistingAsync();
             Shutdown(); return;
         }
         settings = HotkeySettings.Load();
         hotkey = new HotkeyService();
         hotkey.Pressed += async () => await StartCaptureAsync();
+        Updates = new UpdateCoordinator(() => CanRestartForUpdate, ExitApplication);
         settingsWindow = new MainWindow(this, settings);
         MainWindow = settingsWindow;
         var menu = new Forms.ContextMenuStrip();
@@ -62,10 +90,29 @@ public partial class App : Application
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitApplication());
         trayIcon = LoadTrayIcon();
-        tray = new Forms.NotifyIcon { Text = "Cut · 截图", Icon = trayIcon, Visible = true, ContextMenuStrip = menu };
+        tray = new Forms.NotifyIcon { Text = "Cut · 截图", Icon = trayIcon, Visible = handshake is null, ContextMenuStrip = menu };
         tray.DoubleClick += (_, _) => ShowSettings();
+        Updates.PropertyChanged += (_, _) => NotifyUpdateReady();
+        if (handshake is not null)
+        {
+            new System.Windows.Interop.WindowInteropHelper(settingsWindow).EnsureHandle();
+            settingsWindow.Measure(new Size(settingsWindow.Width, settingsWindow.Height));
+            settingsWindow.Arrange(new Rect(0, 0, settingsWindow.Width, settingsWindow.Height));
+            settingsWindow.UpdateLayout();
+            await Services.StartupHealth.CheckAsync(timeout.Token);
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            await handshake.ReadyAsync(timeout.Token);
+        }
+        tray.Visible = true;
+        if (LauncherContext.Root is not null && UpdatePaths.TestKey is null)
+        {
+            try { new StartupRegistration().MigrateLegacyEntry(); }
+            catch (Exception ex) { settingsWindow.SetStatus("自动启动位置未更新：" + ex.Message); }
+        }
         ChangeHotkey(settings, persist: false);
+        instanceHost.StartListening(() => Dispatcher.BeginInvoke(new Action(ShowSettings)));
         SystemEvents.DisplaySettingsChanged += DisplaySettingsChanged;
+        if (UpdatePaths.TestKey is null) Updates.Start();
         if (!autoStart) settingsWindow.Show();
         if (startupSmoke)
         {
@@ -115,7 +162,7 @@ public partial class App : Application
             if (IsExiting) return;
             var windowTargets = WindowDetectionService.Capture();
             session = new CaptureSession(CaptureService.Capture(), windowTargets);
-            session.Completed += () => session = null;
+            session.Completed += () => { session = null; NotifyUpdateReady(); };
             session.Show();
         }
         catch (Exception ex)
@@ -132,6 +179,13 @@ public partial class App : Application
         if (session is not null || IsExiting) return;
         settingsWindow?.Show();
         if (settingsWindow is not null) { settingsWindow.WindowState = WindowState.Normal; settingsWindow.Activate(); }
+    }
+    private void NotifyUpdateReady()
+    {
+        if (Updates?.CanInstall != true || tray is null || !tray.Visible || !CanRestartForUpdate ||
+            Updates.Available?.Sha256 == notifiedPackage || UpdatePaths.TestKey is not null) return;
+        notifiedPackage = Updates.Available!.Sha256;
+        tray.ShowBalloonTip(6000, "Cut 新版本已就绪", "完成当前编辑后，可在设置中点击“重启并更新”。", Forms.ToolTipIcon.Info);
     }
     private static System.Drawing.Icon LoadTrayIcon()
     {
@@ -153,11 +207,12 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         IsExiting = true;
+        Updates?.Dispose();
         SystemEvents.DisplaySettingsChanged -= DisplaySettingsChanged;
         hotkey?.Dispose();
         if (tray is not null) { tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose(); }
         trayIcon?.Dispose();
-        instanceMutex?.Dispose();
+        instanceHost?.Dispose();
         base.OnExit(e);
     }
 }

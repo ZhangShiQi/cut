@@ -66,7 +66,7 @@ internal static class TranslationValidation
 public sealed class TranslationSettingsStore
 {
     private readonly string path;
-    public TranslationSettingsStore() : this(System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Cut", "translation.json")) { }
+    public TranslationSettingsStore() : this(System.IO.Path.Combine(Cut.UpdateEngine.UpdatePaths.Data, "translation.json")) { }
     internal TranslationSettingsStore(string path) => this.path = path;
     private sealed class StoredSettings
     {

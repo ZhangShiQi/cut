@@ -1,8 +1,30 @@
 # Cut
 
-Windows 截图工具，使用 C# / WPF 和 Win32。默认快捷键 **Ctrl + Alt + A**；截图、长截图、标注、二维码和文字识别全程在本地处理，可另行配置 Azure 在线中英翻译、AI 文字助手和 AI 看图。当前版本 **0.13.0**。
+Windows 截图工具，使用 C# / WPF 和 Win32。默认快捷键 **Ctrl + Alt + A**；截图、长截图、标注、二维码和文字识别全程在本地处理，可另行配置 Azure 在线中英翻译、AI 文字助手和 AI 看图。当前版本 **0.14.0**。
 
-## 运行
+## 版本与更新（0.14.0）
+
+设置页可自动检查、下载正式版本，并手动点击“重启并更新”。正在截图、长图编辑、识别或修改服务设置时不能安装；普通退出不会触发更新或重新启动。源码运行只检查更新。公开发行仓库无需登录；私有仓库可填写具有 `Contents: read` 权限的个人令牌，使用当前 Windows 用户的 DPAPI 加密保存。
+
+根目录 `Cut.exe` 是稳定、自包含启动器，初始程序在 `tools/runtime`，后续程序在 `versions/<版本>-<标识>`。保留完整目录。更新先校验 ZIP 和每个组件，再试启动真实 WPF 界面与 OCR；成功后提交版本指针，失败恢复启动前配置并运行旧版。更新提交后的回退保留新配置。相同失败包不会重复安装。当前保留历史版本和快照，不自动清理；不要手动删除 `.cut-update` 或正在使用的版本目录。
+
+配置仍位于 `%LOCALAPPDATA%\Cut`。程序目录必须可写，不能位于该配置目录内部；不支持目录链接。0.13.0 及以前需退出旧版后手动安装一次新版。已有旧版开机启动项在正式新版成功启动后迁移到稳定入口；原先关闭的自启动不会开启。稳定启动器自身和不兼容的数据格式升级需要单独手动安装。
+
+本地发布准备：
+
+```powershell
+.\Tools\release.ps1 -WhatIf  # 只预演
+.\Tools\release.ps1          # 完整测试、打包、真实升级回退验收；不访问发布接口
+.\Tools\publish.ps1          # 仅打包，输出目录必须是新的
+```
+
+唯一版本来源是 `Directory.Build.props`；用 `Tools/set-version.ps1 -Version x.y.z` 修改并补充 `CHANGELOG.md`。准备过程默认允许未提交源码，清单记录 `sourceDirty`；正式发布要求 `main` 工作区干净、远端历史兼容、标签与提交一致。明确执行 `Tools/release.ps1 -Publish` 才推送源码/标签、上传草稿，核对资产摘要后发布；`-Login` 可使用本机 Git Credential Manager 登录。不要在验证前手工上传包，不覆盖已发布版本。首次构建需要 .NET 8 或以上 SDK、Visual Studio x64 VC143 REDIST 和 NuGet 依赖，打包不依赖 Actions。
+
+`Tools/test.ps1` 运行应用回归、更新 API/包边界、12 阶段强杀与恢复测试和模拟发布 API 测试；`Tools/test-portable-update.ps1 -Package <zip>` 验证真实包。测试使用隔离配置和进程；需要允许本机当前用户命名管道。测试没有模拟真实断电、磁盘物理损坏或全部杀毒软件行为。发布接口通过模拟 HTTP 验证，正式远端上传需实际发布时验证权限和连通性。
+
+更新诊断：程序目录 `.cut-update/launcher-error.json`、配置目录 `device/update-result.json`。遇到恢复失败，保留目录和诊断文件，不删除配置来重试。
+
+## 开始运行
 
 发布包支持 Windows 10/11 x64，包含 .NET 运行时、CPU OCR 引擎和模型。解压整个文件夹后运行 `Cut.exe`；本地截图、二维码和 OCR 无需安装 Python、配置接口密钥或下载模型。升级前从托盘退出旧版，不要只复制 EXE。
 
@@ -300,6 +322,6 @@ Get-Content .\artifacts\scroll-native-test.txt
 - 重复快捷键、连续截图、退出后重新启动，检查残留遮罩和快捷键释放。
 - 框选实际网页上的二维码；在记事本粘贴识别文本，点击网页结果验证系统默认浏览器。
 
-本版不含贴图或自动更新。GDI 后端面向普通 SDR 桌面；HDR、受保护视频和独占全屏应用的捕获效果需要额外兼容性验证。Windows N/KN 精简媒体版本可能需要启用 Media Feature Pack 才能加载 OpenCV 的系统依赖。
+本版不含贴图；支持后台检查下载和手动重启更新。GDI 后端面向普通 SDR 桌面；HDR、受保护视频和独占全屏应用的捕获效果需要额外兼容性验证。Windows N/KN 精简媒体版本可能需要启用 Media Feature Pack 才能加载 OpenCV 的系统依赖。
 
 发布包包含 ZXing.Net、PaddleOCR / RapidOCR 转换模型、ONNX Runtime、OpenCvSharp / OpenCV 及运行时。版本、来源和许可见 `THIRD-PARTY-NOTICES.txt`、`Models/manifest.json` 和 `Licenses`。
