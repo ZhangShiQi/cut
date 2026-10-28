@@ -9,11 +9,13 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Cut.Core;
+using Cut.Controls;
 using Cut.Services;
 
 namespace Cut;
@@ -66,6 +68,7 @@ internal static class RecordingTests
         try
         {
             var tools = await MediaTools.LoadAsync();
+            CheckTrimRanges(log);
             Check(RecordingOptions.FrameRates.SequenceEqual(new[] { 5, 10, 15, 30, 60 }), "five rates");
             foreach (var invalid in new[] { Options() with { Fps = 24 }, Options() with { Area = new(-10, 0, 100, 100) }, Options() with { Area = new(0, 0, 1, 1) } })
             { bool rejected = false; try { invalid.Validate(); } catch (ArgumentException) { rejected = true; } Check(rejected, "invalid recording options"); }
@@ -120,6 +123,22 @@ internal static class RecordingTests
                 Check(metadata.RootElement.GetProperty("streams").GetArrayLength() == 1 && stream.GetProperty("codec_name").GetString() == "h264" &&
                     stream.GetProperty("pix_fmt").GetString() == "yuv420p" && stream.GetProperty("width").GetInt32() == 322 && stream.GetProperty("height").GetInt32() == 182, "MP4 compatibility, no audio, even padding");
                 Check(Math.Abs(await tools.DurationAsync(mp4) - 5.4) < .12, "MP4 trimmed duration");
+                foreach (var singleFormat in new[] { RecordingFormat.Gif, RecordingFormat.Mp4 })
+                {
+                    string single = Path.Combine(Output, singleFormat == RecordingFormat.Gif ? "single-frame.gif" : "single-frame.mp4");
+                    await RecordingExporter.ExportAsync(tools, clip, new(singleFormat, 5, .5, 3, 3 + 1d / clip.Options.Fps), single, null, default);
+                    Check(await tools.DurationAsync(single) > 0, "one source frame survives lower output frame rate: " + singleFormat);
+                    if (singleFormat == RecordingFormat.Gif)
+                    {
+                        var singleDecoder = BitmapDecoder.Create(new Uri(single), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                        Check(singleDecoder.Frames.Count == 1, "one-frame GIF is readable");
+                    }
+                    else
+                    {
+                        using var singleMetadata = await ProbeAsync(tools, single);
+                        Check(singleMetadata.RootElement.GetProperty("streams")[0].GetProperty("nb_frames").GetString() == "1", "one-frame MP4 is readable");
+                    }
+                }
                 // Check the timeline across a paused/static section by decoding actual pixels.
                 foreach (var sample in new[] { (Time: 1.5, Name: "before", Red: true), (Time: 4.5, Name: "after", Red: false) })
                 {
@@ -207,6 +226,7 @@ internal static class RecordingTests
                             Check(preview.IsActive && NativeMethods.GetForegroundWindow() == previewHandle, "preview takes foreground focus from the previously active window");
                         if (mode == StopMode.Managed)
                             log.AppendLine(competingActivated ? "PASS preview activated in foreground over a competing window; normal stacking restored." : "NOTE foreground activation test unavailable on this desktop; visible preview and non-minimized owner verified.");
+                        if (mode is StopMode.Managed or StopMode.Button) await CheckTimelinePlaybackAsync(preview, clip, log, mode == StopMode.Button);
                         Render(preview, "preview.png"); preview.Width = 700; preview.Height = 560; await Task.Delay(100); Render(preview, "preview-compact.png");
                         preview.SetTrimForTest(.1, clip.Seconds); preview.SetFormatForTest(RecordingFormat.Mp4);
                         Check(preview.ExportOptions.Fps == clip.Options.Fps, "MP4 source fps default");
@@ -299,6 +319,110 @@ internal static class RecordingTests
         if (blockedF8) Check(released.TryRegister(3, 0x77), "fallback stop shortcut released");
         log.AppendLine("PASS actual toolbar entry, region frame visible in settings/countdown/cancelled countdown/pause/restart with exact physical bounds and mouse passthrough, frame removed on preview/close; full session, per-format defaults, export, restart and shortcut release.");
         await Task.CompletedTask;
+    }
+
+    private static void CheckTrimRanges(StringBuilder log)
+    {
+        var random = new Random(7841);
+        foreach (int fps in RecordingOptions.FrameRates)
+        foreach (double duration in new[] { 1d / fps, 1d / fps + .001, 3.134, 59.987, 60 })
+        {
+            var range = new RecordingTrimRange(duration, fps);
+            void Valid()
+            {
+                Check(range.Start >= 0 && range.End <= duration && range.Start < range.End && range.Length >= range.MinimumLength - 1e-9, "trim interval invariant");
+                Check(range.ConstrainPosition(-999) >= range.Start && range.ConstrainPosition(999) <= range.LastPreviewPosition, "preview position stays within valid frames");
+            }
+            for (int i = 0; i < 600; i++)
+            {
+                double value = (random.NextDouble() * 3 - 1) * duration;
+                if (i % 3 == 0) range.SetStart(value);
+                else if (i % 3 == 1) range.SetEnd(value);
+                else range.SetRange(value, (random.NextDouble() * 3 - 1) * duration);
+                Valid();
+            }
+            range.Reset(); range.SetStart(duration + 10); Valid();
+            Check(Math.Abs(range.Length - range.MinimumLength) < 1e-8, "crossed start retains one frame");
+            range.Reset(); range.SetEnd(-10); Valid();
+            Check(Math.Abs(range.Length - range.MinimumLength) < 1e-8, "crossed end retains one frame");
+            range.Reset(); Check(range.Start == 0 && range.End == duration, "restore complete duration including partial final frame");
+        }
+        log.AppendLine("PASS 15,000 trim edits across five frame rates, single/partial frames and 60s clips: no crossing, no empty intervals, valid preview positions and full-range reset.");
+    }
+    private static async Task WaitForAsync(Func<bool> condition, string label, int milliseconds = 4000)
+    {
+        long deadline = Environment.TickCount64 + milliseconds;
+        while (!condition() && Environment.TickCount64 < deadline) await Task.Delay(20);
+        Check(condition(), label);
+    }
+    private static async Task CheckTimelinePlaybackAsync(RecordingPreviewWindow preview, RecordingClip clip, StringBuilder log, bool native)
+    {
+        var timeline = preview.TimelineForTest;
+        await WaitForAsync(() => preview.MediaReadyForTest && timeline.HasFilmstrip, "media decoder and real thumbnail strip loaded");
+        Thumb Handle(string label) => Descendants<Thumb>(timeline).Single(t => AutomationProperties.GetName(t) == label);
+        void Drag(Thumb thumb, double delta, bool cancel = false)
+        {
+            thumb.RaiseEvent(new DragStartedEventArgs(0, 0) { RoutedEvent = Thumb.DragStartedEvent });
+            thumb.RaiseEvent(new DragDeltaEventArgs(delta, 0) { RoutedEvent = Thumb.DragDeltaEvent });
+            thumb.RaiseEvent(new DragCompletedEventArgs(delta, 0, cancel) { RoutedEvent = Thumb.DragCompletedEvent });
+            preview.ExportOptions.Validate(clip);
+        }
+        timeline.SetSelection(.2, clip.Seconds * .7);
+        double end = timeline.Range.End;
+        if (native)
+        {
+            preview.UpdateLayout();
+            var thumb = Handle("裁剪起点");
+            var origin = thumb.PointToScreen(new Point(thumb.ActualWidth / 2, thumb.ActualHeight / 2));
+            var target = timeline.PointToScreen(new Point(timeline.ActualWidth - 22, 52));
+            var handle = new WindowInteropHelper(preview).Handle;
+            Check(NativeMethods.GetAncestor(NativeMethods.WindowFromPoint(new() { X = (int)origin.X, Y = (int)origin.Y }), 2) == handle, "native trim drag targets only own preview");
+            SetCursorPos((int)origin.X, (int)origin.Y);
+            await Task.Delay(60);
+            try
+            {
+                Check(SendInput(1, new[] { new TestInput { MouseFlags = 2 } }, 40) == 1, "native trim mouse down");
+                await Task.Delay(60);
+                Check(thumb.IsDragging, "native mouse captures trim handle; hit=" + preview.InputHitTest(preview.PointFromScreen(origin))?.GetType().Name);
+                for (int i = 1; i <= 10; i++) { SetCursorPos((int)(origin.X + (target.X - origin.X) * i / 10), (int)(origin.Y + (target.Y - origin.Y) * i / 10)); await Task.Delay(15); }
+            }
+            finally { SendInput(1, new[] { new TestInput { MouseFlags = 4 } }, 40); }
+            await Task.Delay(80);
+        }
+        else Drag(Handle("裁剪起点"), timeline.ActualWidth * 3);
+        Check(Math.Abs(timeline.Range.End - end) < 1e-8 && Math.Abs(timeline.Range.Length - timeline.Range.MinimumLength) < 1e-8,
+            $"start cannot cross the end: {timeline.Range.Start}–{timeline.Range.End}, expected end={end}, native={native}");
+        preview.ExportOptions.Validate(clip);
+        timeline.SetSelection(clip.Seconds * .3, clip.Seconds - .1);
+        double begin = timeline.Range.Start;
+        Drag(Handle("裁剪终点"), -timeline.ActualWidth * 3);
+        Check(timeline.Range.Start == begin && Math.Abs(timeline.Range.Length - timeline.Range.MinimumLength) < 1e-8, "end cannot cross the start");
+        double savedStart = timeline.Range.Start, savedEnd = timeline.Range.End;
+        Drag(Handle("裁剪起点"), -timeline.ActualWidth, true);
+        Check(timeline.Range.Start == savedStart && timeline.Range.End == savedEnd, "cancel drag restores both endpoints exactly");
+        timeline.ResetSelection(); preview.PlayForTest();
+        await WaitForAsync(() => preview.PlayerPositionForTest < .3, "reset seeks decoder to the beginning");
+        double initial = preview.PlayerPositionForTest;
+        await WaitForAsync(() => preview.PlayerPositionForTest > initial + .15 && preview.MediaReadyForTest, "actual video playback advances after crossing and reset");
+        byte[] Frame(string name)
+        {
+            var media = Descendants<MediaElement>(preview).Single();
+            var bitmap = new RenderTargetBitmap(Math.Max(1, (int)Math.Ceiling(media.ActualWidth)), Math.Max(1, (int)Math.Ceiling(media.ActualHeight)), 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(media); ExportService.SavePng(bitmap, Path.Combine(Output, name));
+            byte[] bytes = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4]; bitmap.CopyPixels(bytes, bitmap.PixelWidth * 4, 0); return bytes;
+        }
+        double before = preview.PlayerPositionForTest;
+        var firstFrame = Frame("timeline-playback-before.png");
+        await WaitForAsync(() => preview.PlayerPositionForTest > before + .25, "video keeps playing after seek settles");
+        var secondFrame = Frame("timeline-playback-after.png");
+        Check(!firstFrame.SequenceEqual(secondFrame), "rendered video pixels change after restoring playback");
+        timeline.ResetSelection();
+        var startHandle = Handle("裁剪起点");
+        startHandle.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(preview), Environment.TickCount, Key.Right) { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+        Check(Math.Abs(timeline.Range.Start - 1d / clip.Options.Fps) < 1e-8, "keyboard nudges trim start by exactly one frame");
+        timeline.ResetSelection();
+        log.AppendLine(native ? "PASS real mouse trim drag beyond end: constrained to one frame, reverse drag/cancel/reset valid, rendered video pixels resume changing and keyboard frame step works." :
+            "PASS dedicated timeline: crossed endpoints, single frame, cancellation, reset, real thumbnail strip, advancing playback clock AND changing video pixels, keyboard frame step.");
     }
 
     // Separate test process with no normal app initialization or personal settings.

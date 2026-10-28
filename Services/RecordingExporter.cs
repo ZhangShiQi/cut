@@ -30,7 +30,7 @@ internal static class RecordingExporter
         // then trim. Re-timing never depends on the number of captured frames.
         return $"fps={clip.Options.Fps}:start_time=0,tpad=stop_mode=clone:stop_duration=60,trim=duration={MediaTools.Number(clip.Seconds)}," +
             $"trim=start={MediaTools.Number(options.Start)}:end={MediaTools.Number(options.End)},setpts=PTS-STARTPTS," +
-            $"fps={options.Fps},scale={w}:{h}:flags=lanczos";
+            $"fps={options.Fps}:eof_action=pass,scale={w}:{h}:flags=lanczos";
     }
     internal static async Task PreviewAsync(MediaTools tools, RecordingClip clip, IProgress<double>? progress, CancellationToken token)
     {
